@@ -1,0 +1,9 @@
+pytorch>=2.1
+torchvision
+diffusers>=0.30
+transformers>=4.40
+datasets>=2.18
+pillow
+tqdm
+matplotlib
+ipykernel
