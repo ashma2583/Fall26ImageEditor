@@ -11,17 +11,29 @@ rerunning it. DDIM uses 50 steps. Samples are not perfect, which is useful for d
 
 ## Setup
 
-Use Python 3.10 or newer. From the repository root:
+This notebook and its checkpoint run without the workshop folder. From the
+repository root, choose either [venv + pip](../requirements-venv.txt) or the
+root [Conda environment](../environment-conda.yml):
 
 ```bash
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r mnist-implementation/requirements.txt
-python -m ipykernel install --user --name mnist-diffusion --display-name "MNIST diffusion"
+python -m pip install -r requirements-venv.txt
 python -m jupyterlab mnist-implementation/diffusion_mnist.ipynb
 ```
 
-Select the **MNIST diffusion** kernel. Launch from the repository root or this folder.
+Or use Conda:
+
+```bash
+conda env create -f environment-conda.yml
+conda activate mnist-diffusion
+python -m jupyterlab mnist-implementation/diffusion_mnist.ipynb
+```
+
+Select the Python kernel from the activated environment. The venv path also
+works with another installed Python 3.10+ executable. Both `ipykernel` and
+`jupyterlab` are included in the root environment files; starting JupyterLab
+from that environment is sufficient for this setup.
 
 ## Files
 
@@ -29,7 +41,6 @@ Select the **MNIST diffusion** kernel. Launch from the repository root or this f
 - `diffusion.py`: cosine schedule and the forward/reverse equations.
 - `unet.py`: explicit 28 → 14 → 7 → 14 → 28 U-Net with timestep conditioning.
 - `checkpoints/mnist_demo.pt`: the only retained demo checkpoint (about 3 MB).
-- `../mnist-workshop/`: the separate incomplete participant version.
 
 The checkpoint contains CPU model weights, configuration, cosine loss history,
 training provenance, and example images. Optimizer state and obsolete experiments
@@ -48,6 +59,8 @@ restart/run all to restore the prepared demo.
 
 ## Sharing for the meeting
 
-Keep `mnist-implementation` and `mnist-workshop` beside each other. Include
-`checkpoints/mnist_demo.pt` when distributing the folders. Cached `data/` is optional
-for the demo, but useful if the group wants to train without downloading MNIST.
+You can distribute this folder with the two root environment files. Include
+`checkpoints/mnist_demo.pt`; the notebook needs no workshop files to show the
+saved figures or regenerate samples.
+Cached `data/` is optional for the demo, but useful if the group wants to train
+without downloading MNIST.

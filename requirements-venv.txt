@@ -1,0 +1,7 @@
+# Install with pip inside a Python 3.10+ virtual environment.
+torch>=2.1
+torchvision
+matplotlib
+tqdm
+ipykernel
+jupyterlab

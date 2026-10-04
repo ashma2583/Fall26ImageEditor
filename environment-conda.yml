@@ -1,0 +1,12 @@
+name: mnist-diffusion
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pytorch>=2.1
+  - torchvision
+  - matplotlib
+  - tqdm
+  - ipykernel
+  - jupyterlab

@@ -1,6 +1,0 @@
-torch>=2.1
-torchvision
-matplotlib
-tqdm
-ipykernel
-jupyterlab

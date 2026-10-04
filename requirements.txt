@@ -1,4 +1,4 @@
-torch>=2.1
+pytorch>=2.1
 torchvision
 diffusers>=0.30
 transformers>=4.40

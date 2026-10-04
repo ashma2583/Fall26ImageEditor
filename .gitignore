@@ -1,1 +1,26 @@
-venv
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+checkpoints/
+data/
+.DS_Store
+
+# Local AI-agent guidance and prompt files (at any directory depth).
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+CODEX.md
+copilot-instructions.md
+*.agent.md
+*.instructions.md
+*.prompt.md
+mnist-workshop/slideshow-plan.md
+
+# Keep each folder's prepared checkpoint; ignore optional training runs.
+!mnist-implementation/checkpoints/
+mnist-implementation/checkpoints/*
+!mnist-implementation/checkpoints/mnist_demo.pt
+!mnist-workshop/checkpoints/
+mnist-workshop/checkpoints/*
+!mnist-workshop/checkpoints/mnist_workshop.pt
