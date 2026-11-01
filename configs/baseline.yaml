@@ -1,0 +1,29 @@
+experiment:
+  name: magicbrush_baseline
+  output_dir: checkpoints/magicbrush
+
+model:
+  pretrained: timbrooks/instruct-pix2pix
+  device: mps
+
+dataset:
+  name: osunlp/MagicBrush
+  resolution: 256
+  streaming: true
+
+training:
+  batch_size: 4
+  epochs: 5
+  learning_rate: 1.0e-5
+  weight_decay: 0.01
+  seed: 42
+
+  mixed_precision: no
+  gradient_accumulation_steps: 2
+  source_drop_rate: 0.05
+  instruction_drop_rate: 0.05
+
+inference:
+  num_inference_steps: 30
+  guidance_scale: 7.5
+  image_guidance_scale: 1.5
