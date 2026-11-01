@@ -5,6 +5,8 @@ __pycache__/
 checkpoints/
 data/
 .DS_Store
+.vscode
+.env
 
 # Local AI-agent guidance and prompt files (at any directory depth).
 AGENTS.md
