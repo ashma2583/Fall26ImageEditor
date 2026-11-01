@@ -10,9 +10,9 @@ import yaml
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from models.baseline import InstructPix2PixModel
 from data import load_magicbrush
-
+from data import load_ultraedit
+from models.baseline import InstructPix2PixModel
 
 ROOT = Path(__file__).resolve().parent
 
@@ -54,12 +54,14 @@ def train(config):
     batch_size = int(settings["batch_size"])
     epochs = int(settings["epochs"])
     if min(accumulation, batch_size, epochs) < 1:
-        raise ValueError("gradient_accumulation_steps, batch_size, and epochs must be positive")
+        raise ValueError(
+            "gradient_accumulation_steps, batch_size, and epochs must be positive"
+        )
 
-    train_dataset, _ = load_magicbrush(
-        name=data_settings.get("name", "osunlp/MagicBrush"),
+    train_dataset, _ = load_ultraedit(
+        name=data_settings.get("name", "BleachNick/UltraEdit_500k"),
         resolution=int(data_settings["resolution"]),
-        streaming=bool(data_settings.get("streaming", False)),
+        streaming=bool(data_settings.get("streaming", True)),
     )
     if data_settings.get("streaming", False):
         train_dataset = train_dataset.shuffle(
@@ -98,8 +100,11 @@ def train(config):
         for batch in tqdm(loader, desc=f"Epoch {epoch}/{epochs}"):
             source = batch["source"].to(device)
             target = batch["target"].to(device)
-            autocast = (torch.autocast(device_type=device.type, dtype=autocast_dtype)
-                        if precision != "no" else nullcontext())
+            autocast = (
+                torch.autocast(device_type=device.type, dtype=autocast_dtype)
+                if precision != "no"
+                else nullcontext()
+            )
             with autocast:
                 loss = model(source, target, batch["instruction"])
             scaler.scale(loss / accumulation).backward()
@@ -124,7 +129,9 @@ def train(config):
             optimizer.zero_grad(set_to_none=True)
         checkpoint = output_dir / f"epoch-{epoch}" / "unet"
         model.save_model(checkpoint)
-        print(f"Epoch {epoch}: mean loss {total_loss / batches:.4f}; saved {checkpoint}")
+        print(
+            f"Epoch {epoch}: mean loss {total_loss / batches:.4f}; saved {checkpoint}"
+        )
 
     final_checkpoint = output_dir / "final" / "unet"
     model.save_model(final_checkpoint)
@@ -142,4 +149,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
