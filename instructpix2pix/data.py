@@ -44,7 +44,18 @@ def paired_transform(original: Image.Image, edited: Image.Image, resolution: int
     #      Else: TF.center_crop to (res, res).
     #   4. uint8 [0, 255] -> float [-1, 1].
     #   5. Split back into the first 3 and last 3 channels.
-    raise NotImplementedError
+    x = torch.cat([TF.pil_to_tensor(original.convert("RGB")),
+                   TF.pil_to_tensor(edited.convert("RGB"))])          # (6, H, W) uint8
+    x = TF.resize(x, resolution, antialias=True)                      # shorter side -> res
+    if train:
+        i, j, h, w = RandomCrop.get_params(x, (resolution, resolution))
+        x = TF.crop(x, i, j, h, w)
+        if random.random() < 0.5:
+            x = TF.hflip(x)
+    else:
+        x = TF.center_crop(x, [resolution, resolution])
+    x = x.float() / 127.5 - 1.0                                       # [0, 255] -> [-1, 1]
+    return x[:3], x[3:]
 
 
 def load_split(name: str = "small", split: str = "train", streaming: bool = False, max_samples: int | None = None):
