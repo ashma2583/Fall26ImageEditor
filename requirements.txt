@@ -7,3 +7,5 @@ pillow
 tqdm
 matplotlib
 ipykernel
+python-dotenv
+pyyaml
