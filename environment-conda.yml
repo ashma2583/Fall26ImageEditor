@@ -1,4 +1,4 @@
-name: mnist-diffusion
+name: image-editor
 channels:
   - conda-forge
   - nodefaults
@@ -6,7 +6,12 @@ dependencies:
   - python=3.11
   - pytorch>=2.1
   - torchvision
-  - matplotlib
+  - diffusers>=0.30
+  - transformers>=4.40
+  - datasets>=2.18
+  - pillow
   - tqdm
+  - matplotlib
   - ipykernel
-  - jupyterlab
+  - python-dotenv
+  - pyyaml

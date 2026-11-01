@@ -4,7 +4,7 @@ experiment:
 
 model:
   pretrained: timbrooks/instruct-pix2pix
-  device: mps
+  device: cuda
 
 dataset:
   name: osunlp/MagicBrush
@@ -18,7 +18,7 @@ training:
   weight_decay: 0.01
   seed: 42
 
-  mixed_precision: no
+  mixed_precision: fp16
   gradient_accumulation_steps: 2
   source_drop_rate: 0.05
   instruction_drop_rate: 0.05
