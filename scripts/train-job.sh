@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=ml-train
-#SBATCH --account=YOUR_SUBACCOUNT
+#SBATCH --account=mds_team
 #SBATCH --partition=spgpu
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
@@ -12,11 +12,9 @@ set -e
 
 cd "$SLURM_SUBMIT_DIR"
 
-# Load Mamba
-module load mamba
-
-# Activate environment
-source activate image-editor
+module load mamba/py3.12
+eval "$(conda shell.bash hook)"
+conda activate "$PWD/.conda"
 
 # Verify GPU
 nvidia-smi
