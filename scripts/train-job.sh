@@ -6,14 +6,14 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=04:00:00
-#SBATCH --output=slurm-%j.out
+#SBATCH --output=outputs/slurm-%j.out
 
 set -e
 
 cd "$SLURM_SUBMIT_DIR"
 
 module load python
-source .venv/bin/activate
+source pytorch_tutorial/bin/activate
 
 # Verify GPU
 nvidia-smi
