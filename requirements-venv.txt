@@ -1,7 +1,10 @@
-# Install with pip inside a Python 3.10+ virtual environment.
-torch>=2.1
-torchvision
-matplotlib
+diffusers>=0.30
+transformers>=4.40
+datasets>=2.18
+numpy
+pillow
 tqdm
+matplotlib
 ipykernel
-jupyterlab
+python-dotenv
+pyyaml
