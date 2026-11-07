@@ -12,9 +12,8 @@ set -e
 
 cd "$SLURM_SUBMIT_DIR"
 
-module load mamba/py3.12
-eval "$(conda shell.bash hook)"
-conda activate "$PWD/.conda"
+module load python
+source .venv/bin/activate
 
 # Verify GPU
 nvidia-smi
