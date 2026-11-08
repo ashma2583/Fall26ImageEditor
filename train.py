@@ -1,4 +1,4 @@
-"""Train the InstructPix2Pix baseline on MagicBrush."""
+"""Train the InstructPix2Pix baseline on paired image-edit data."""
 
 import argparse
 import random
@@ -10,8 +10,7 @@ import yaml
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from data import load_magicbrush
-from data import load_ultraedit
+from data import load_magicbrush, load_ultraedit
 from models.baseline import InstructPix2PixModel
 
 ROOT = Path(__file__).resolve().parent
@@ -58,17 +57,40 @@ def train(config):
             "gradient_accumulation_steps, batch_size, and epochs must be positive"
         )
 
-    train_dataset, _ = load_ultraedit(
-        name=data_settings.get("name", "BleachNick/UltraEdit_500k"),
-        resolution=int(data_settings["resolution"]),
-        streaming=bool(data_settings.get("streaming", True)),
-    )
+    dataset_name = data_settings.get("name", "osunlp/MagicBrush")
+    resolution = int(data_settings["resolution"])
+    streaming = bool(data_settings.get("streaming", False))
+    max_samples = data_settings.get("max_samples")
+    if max_samples is not None:
+        max_samples = int(max_samples)
+        if max_samples < 1:
+            raise ValueError("dataset.max_samples must be positive when provided")
+
+    if dataset_name.lower() == "bleachnick/ultraedit_500k":
+        train_dataset = load_ultraedit(
+            name=dataset_name,
+            resolution=resolution,
+            streaming=streaming,
+            split=data_settings.get("split", "FreeForm"),
+        )
+    else:
+        train_dataset, _ = load_magicbrush(
+            name=dataset_name,
+            resolution=resolution,
+            streaming=streaming,
+        )
     if data_settings.get("streaming", False):
         train_dataset = train_dataset.shuffle(
             buffer_size=int(data_settings.get("shuffle_buffer_size", 64)), seed=seed
         )
+        if max_samples is not None:
+            train_dataset = train_dataset.take(max_samples)
     else:
         train_dataset = train_dataset.shuffle(seed=seed)
+        if max_samples is not None:
+            train_dataset = train_dataset.select(
+                range(min(max_samples, len(train_dataset)))
+            )
     loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_batch)
 
     model = InstructPix2PixModel(

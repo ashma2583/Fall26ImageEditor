@@ -1,0 +1,32 @@
+experiment:
+  name: ultraedit_baseline
+  output_dir: checkpoints/ultraedit
+
+model:
+  pretrained: timbrooks/instruct-pix2pix
+  device: cuda
+
+dataset:
+  name: BleachNick/UltraEdit_500k
+  split: FreeForm
+  resolution: 256
+  streaming: true
+  shuffle_buffer_size: 64
+  # Set to a positive number to train on a smaller slice per epoch; null uses all rows.
+  max_samples: null
+
+training:
+  batch_size: 4
+  epochs: 5
+  learning_rate: 1.0e-5
+  weight_decay: 0.01
+  seed: 42
+  mixed_precision: fp16
+  gradient_accumulation_steps: 2
+  source_drop_rate: 0.05
+  instruction_drop_rate: 0.05
+
+inference:
+  num_inference_steps: 30
+  guidance_scale: 7.5
+  image_guidance_scale: 1.5
