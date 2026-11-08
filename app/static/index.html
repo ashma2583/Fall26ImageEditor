@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Photo Booth: edit your photo with words</title>
+<title>Scene Shift: change the season, weather or style of a photo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Gochi+Hand&display=swap" rel="stylesheet">
@@ -40,13 +40,9 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
-  body {
-    background: var(--bg);
-    color: var(--ink);
-    font: 400 16px/1.5 var(--sans);
-    min-height: 100vh;
-  }
+  body { background: var(--bg); color: var(--ink); font: 400 16px/1.5 var(--sans); min-height: 100vh; }
   button, input, textarea { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
   :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   header {
@@ -62,19 +58,13 @@
   }
   @media (max-width: 820px) { main { grid-template-columns: 1fr; gap: 28px; } }
 
-  /* ---- the print: the one bold element ---- */
+  /* ---- the print ---- */
   .print {
     background: var(--frame); padding: 14px 14px 0; border-radius: 4px;
-    box-shadow: var(--frame-shadow); transform: rotate(-0.6deg);
-    max-width: 560px; width: 100%; justify-self: center;
+    box-shadow: var(--frame-shadow); transform: rotate(-0.6deg); max-width: 560px; width: 100%; justify-self: center;
   }
-  .stage {
-    position: relative; aspect-ratio: 1; background: #E3E1EC; overflow: hidden; border-radius: 2px;
-    user-select: none;
-  }
-  .stage img {
-    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none;
-  }
+  .stage { position: relative; aspect-ratio: 1; background: #E3E1EC; overflow: hidden; border-radius: 2px; user-select: none; }
+  .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
   #before { clip-path: inset(0 calc(100% - var(--pos, 50%)) 0 0); }
   .divider {
     position: absolute; top: 0; bottom: 0; left: var(--pos, 50%); width: 2px; margin-left: -1px;
@@ -83,33 +73,35 @@
   .divider::after {
     content: "◂ ▸"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     width: 44px; height: 44px; border-radius: 50%; background: #FFFFFF; color: #1E1C33;
-    display: grid; place-items: center; font-size: 13px; letter-spacing: 2px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, .35);
+    display: grid; place-items: center; font-size: 13px; letter-spacing: 2px; box-shadow: 0 2px 10px rgba(0, 0, 0, .35);
   }
   .tag {
     position: absolute; top: 10px; padding: 2px 10px; border-radius: 999px; font-size: .8125rem;
     background: rgba(20, 19, 34, .7); color: #FFFFFF; pointer-events: none;
   }
   .tag.left { left: 10px; } .tag.right { right: 10px; }
-  #compare {
-    position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize;
-  }
+  #compare { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
   #compare:focus-visible + .divider::after { outline: 3px solid var(--accent); outline-offset: 2px; }
   .stage:not(.has-edit) #before, .stage:not(.has-edit) .divider,
   .stage:not(.has-edit) .tag, .stage:not(.has-edit) #compare { display: none; }
 
+  /* painted selection: pink, half transparent, only while selecting */
+  #mask { position: absolute; display: none; opacity: .5; cursor: crosshair; touch-action: none; }
+  .stage.painting #mask { display: block; }
+
   .drop {
-    position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 6px;
-    padding: 24px; border: 2px dashed #A9A6BE; border-radius: 2px; cursor: pointer; color: #4C4964;
-    background: #E3E1EC;
+    position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; text-align: center; gap: 12px;
+    padding: 24px; border: 2px dashed #A9A6BE; border-radius: 2px; color: #4C4964; background: #E3E1EC;
   }
   .drop strong { font-size: 1.25rem; color: #1E1C33; }
+  .drop .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .drop .btn { background: #FFFFFF; color: #1E1C33; border-color: #C9C6D9; }
   .drop.over { border-color: var(--accent); background: #DCDDF5; }
   .stage.loaded .drop { display: none; }
 
   .busy {
     position: absolute; inset: 0; display: none; place-content: center; justify-items: center; gap: 12px;
-    background: rgba(20, 19, 34, .55); color: #FFFFFF; font-weight: 600;
+    background: rgba(20, 19, 34, .55); color: #FFFFFF; font-weight: 600; text-align: center; padding: 16px;
   }
   .stage.working .busy { display: grid; }
   .spinner {
@@ -119,28 +111,32 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } .print { transform: none; } }
 
-  .caption {
-    font: 1.5rem/1.2 var(--hand); color: #2B2945; min-height: 3.6rem; padding: 12px 6px 16px;
-    overflow-wrap: anywhere;
-  }
+  .caption { font: 1.5rem/1.2 var(--hand); color: #2B2945; min-height: 3.6rem; padding: 12px 6px 16px; overflow-wrap: anywhere; }
   .caption small { display: block; font: .8125rem/1.4 var(--sans); color: #6E6B84; margin-top: 4px; }
-
   .print-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 22px; }
 
   /* ---- controls ---- */
   .controls { display: grid; gap: 26px; }
-  label.big { display: block; font-weight: 600; font-size: 1.0625rem; margin-bottom: 8px; }
-  textarea {
-    width: 100%; min-height: 92px; resize: vertical; padding: 12px 14px; border-radius: 10px;
-    border: 1px solid var(--line); background: var(--surface); line-height: 1.4;
+  label.big, .big { display: block; font-weight: 600; font-size: 1.0625rem; margin-bottom: 8px; }
+  textarea, input[type=text] {
+    width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); line-height: 1.4;
   }
+  textarea { min-height: 92px; resize: vertical; }
   .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .chip {
-    border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 999px;
-    cursor: pointer; font-size: .9375rem;
-  }
+  .chip { border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: .9375rem; }
   .chip:hover { border-color: var(--accent); }
   .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .seg label { position: relative; padding: 8px 14px; cursor: pointer; }
+  .seg label + label { border-left: 1px solid var(--line); }
+  .seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .seg label:has(input:checked) { background: var(--accent); color: var(--accent-ink); }
+  .seg label:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+  .area-tools { display: grid; gap: 14px; margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  .inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .inline input[type=text] { flex: 1 1 160px; width: auto; }
 
   fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 18px; }
   legend { font-weight: 600; font-size: 1.0625rem; margin-bottom: 4px; padding: 0; }
@@ -154,30 +150,41 @@
   summary { cursor: pointer; color: var(--muted); }
   .adv { display: grid; gap: 16px; margin-top: 14px; }
   .seed-row { display: flex; gap: 8px; align-items: center; }
-  .seed-row input[type=number] {
-    width: 9rem; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface);
-  }
+  .seed-row input[type=number] { width: 9rem; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); }
   .check { display: flex; gap: 10px; align-items: flex-start; }
   .check input { margin-top: 5px; accent-color: var(--accent); }
 
-  .btn {
-    border: 1px solid var(--line); background: var(--surface); padding: 9px 16px; border-radius: 10px;
-    cursor: pointer; font-weight: 600;
-  }
+  .btn { border: 1px solid var(--line); background: var(--surface); padding: 9px 16px; border-radius: 10px; cursor: pointer; font-weight: 600; }
   .btn:hover:not(:disabled) { border-color: var(--accent); }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
-  .btn.primary {
-    width: 100%; padding: 14px 18px; font-size: 1.0625rem; background: var(--accent); color: var(--accent-ink);
-    border-color: var(--accent);
-  }
+  .btn.primary { width: 100%; padding: 14px 18px; font-size: 1.0625rem; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   .btn.small { padding: 6px 12px; font-weight: 400; }
   #status { min-height: 1.5em; margin: 8px 0 0; font-size: .9375rem; color: var(--muted); }
   #status.error { color: var(--danger); }
+
+  .group-label { margin: 12px 0 0; color: var(--muted); font-size: .875rem; }
+  .group-label + .presets { margin-top: 6px; }
+  .variants { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+  .variants button {
+    padding: 0; border: 3px solid transparent; border-radius: 6px; background: none; cursor: pointer;
+    width: 84px; height: 84px; overflow: hidden;
+  }
+  .variants button img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .variants button[aria-pressed="true"] { border-color: var(--accent); }
+
+  /* ---- camera ---- */
+  dialog { border: 0; border-radius: 14px; padding: 16px; background: var(--surface); color: var(--ink); width: min(92vw, 600px); }
+  dialog::backdrop { background: rgba(10, 10, 20, .65); }
+  #cam-video { display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; background: #000; }
+  #cam-video.mirror { transform: scaleX(-1); }
+  .cam-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 12px; }
+  .cam-actions .btn.primary { width: auto; padding: 9px 20px; font-size: 1rem; }
+  #cam-msg { color: var(--danger); margin: 10px 0 0; min-height: 1.2em; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Photo Booth</h1>
+  <h1>Scene Shift</h1>
   <span id="server">Connecting to the model…</span>
 </header>
 
@@ -191,30 +198,76 @@
         <span class="tag right">After</span>
         <input id="compare" type="range" min="0" max="100" value="50" aria-label="Compare before and after">
         <div class="divider"></div>
+        <canvas id="mask" aria-label="Paint over the part of the photo to change"></canvas>
 
-        <div class="drop" id="drop" role="button" tabindex="0" aria-label="Upload a photo">
-          <strong>Drop a headshot here</strong>
-          <span>or click to choose one. You can also paste an image.</span>
+        <div class="drop" id="drop">
+          <strong>Add a photo of a place</strong>
+          <span>A landscape, street, room or travel photo works best. Drop it here, paste it, or:</span>
+          <div class="row">
+            <button class="btn" id="pick" type="button">Choose a photo</button>
+            <button class="btn" id="camera" type="button">Take a photo</button>
+          </div>
         </div>
         <input id="file" type="file" accept="image/*" hidden>
+        <input id="file-camera" type="file" accept="image/*" capture="user" hidden>
 
         <div class="busy" aria-live="polite"><div class="spinner"></div><span id="busy-text">Editing your photo…</span></div>
       </div>
-      <div class="caption" id="caption">your photo goes here</div>
+      <div class="caption" id="caption">your scene goes here</div>
     </div>
+
+    <div class="variants" id="variants" hidden aria-label="Variations"></div>
 
     <div class="print-actions">
       <button class="btn" id="undo" disabled>Undo last edit</button>
       <button class="btn" id="download" disabled>Download</button>
-      <button class="btn" id="new-photo">Use a different photo</button>
+      <button class="btn" id="new-photo">New photo</button>
+      <button class="btn" id="retake">Use camera</button>
     </div>
   </section>
 
   <section class="controls" aria-label="Edit settings">
     <div>
       <label class="big" for="prompt">What should change?</label>
-      <textarea id="prompt" maxlength="300" placeholder="add a pink bow to my hair"></textarea>
-      <div class="presets" id="presets"></div>
+      <textarea id="prompt" maxlength="300" placeholder="make it winter"></textarea>
+      <p class="group-label">Season, weather and time</p>
+      <div class="presets" id="presets-scene"></div>
+      <p class="group-label">Art style</p>
+      <div class="presets" id="presets-style"></div>
+    </div>
+
+    <div>
+      <span class="big" id="where-label">Where?</span>
+      <div class="seg" role="radiogroup" aria-labelledby="where-label">
+        <label><input type="radio" name="mode" value="whole" checked>Whole photo</label>
+        <label><input type="radio" name="mode" value="area">Only part of it</label>
+      </div>
+
+      <div class="area-tools" id="area-tools" hidden>
+        <div>
+          <label for="region">Auto-select a part</label>
+          <div class="inline">
+            <input id="region" type="text" placeholder="sky, water, trees…">
+            <button class="btn small" id="select" type="button">Select</button>
+          </div>
+          <p class="hint">Separate several parts with commas. Then fix the edges with the brush.</p>
+        </div>
+        <div>
+          <div class="inline">
+            <div class="seg" role="radiogroup" aria-label="Brush">
+              <label><input type="radio" name="brush-mode" value="paint" checked>Paint</label>
+              <label><input type="radio" name="brush-mode" value="erase">Erase</label>
+            </div>
+            <button class="btn small" id="clear-mask" type="button">Clear</button>
+            <button class="btn small" id="view-toggle" type="button" hidden></button>
+          </div>
+        </div>
+        <div class="slider-row">
+          <div class="slider-head"><label for="brush">Brush size</label><output id="brush-out"></output></div>
+          <input id="brush" type="range" min="6" max="90" step="1" value="34">
+          <p class="hint">Only the pink area can change. Everything else stays exactly as it was.</p>
+        </div>
+      </div>
     </div>
 
     <fieldset>
@@ -227,7 +280,7 @@
       <div class="slider-row">
         <div class="slider-head"><label for="sI">Keep my original photo</label><output id="sI-out"></output></div>
         <input id="sI" type="range" min="1" max="2" step="0.05" value="1.5">
-        <p class="hint">Higher keeps your face and background closer to the original. Lower if nothing changes.</p>
+        <p class="hint">Higher keeps the layout and details closer to the original. Lower if nothing changes.</p>
       </div>
     </fieldset>
 
@@ -242,7 +295,7 @@
         <div>
           <label for="seed">Variation number</label>
           <div class="seed-row">
-            <input id="seed" type="number" min="0" max="2147483647" value="0">
+            <input id="seed" type="number" min="0" max="2147483646" value="0">
             <button class="btn small" id="reroll" type="button">Pick a new one</button>
           </div>
           <p class="hint">Same photo, instruction and number give the same result.</p>
@@ -255,56 +308,92 @@
     </details>
 
     <div>
+      <span class="big" id="var-label">How many versions?</span>
+      <div class="seg" role="radiogroup" aria-labelledby="var-label">
+        <label><input type="radio" name="count" value="1" checked>1</label>
+        <label><input type="radio" name="count" value="2">2</label>
+        <label><input type="radio" name="count" value="4">4</label>
+      </div>
+      <p class="hint" style="margin-top:6px">More versions take longer, but one of them is usually good. Pick your favorite after.</p>
+    </div>
+
+    <div>
       <button class="btn primary" id="apply" disabled>Apply edit</button>
       <p id="status" role="status"></p>
     </div>
   </section>
 </main>
 
+<dialog id="cam" aria-label="Take a photo">
+  <video id="cam-video" autoplay playsinline muted></video>
+  <p id="cam-msg" role="alert"></p>
+  <div class="cam-actions">
+    <button class="btn" id="cam-cancel" type="button">Cancel</button>
+    <button class="btn" id="flip" type="button" hidden>Switch camera</button>
+    <button class="btn primary" id="snap" type="button" disabled>Take photo</button>
+  </div>
+</dialog>
+
 <script>
+// [group, button label, instruction, part to auto-select in "Only part of it" mode]
 const PRESETS = [
-  ["🎄 Christmas", "put me in a cozy red christmas sweater and add a subtle santa hat"],
-  ["🕶️ Cyberpunk shades", "give me cool neon cyberpunk sunglasses"],
-  ["🎀 Pink bow", "add a big pink bow to my hair"],
-  ["❄️ Snow day", "make it snowing in the background"],
-  ["🎃 Halloween", "give me a witch hat and add halloween decorations in the background"],
-  ["🌸 Spring", "add cherry blossom petals falling around me"],
+  ["scene", "❄️ Winter", "make it winter with snow on the ground", ""],
+  ["scene", "🍂 Autumn", "make it autumn", ""],
+  ["scene", "🌸 Spring", "make it spring with flowers blooming", ""],
+  ["scene", "🌅 Sunset", "make it sunset", "sky"],
+  ["scene", "🌙 Night", "make it night time", ""],
+  ["scene", "🌧️ Rainy", "make it a rainy day", ""],
+  ["scene", "🌫️ Foggy", "make it foggy", ""],
+  ["style", "🎨 Watercolor", "turn it into a watercolor painting", ""],
+  ["style", "✏️ Pencil sketch", "turn it into a pencil sketch", ""],
+  ["style", "🌀 Van Gogh", "make it look like a Van Gogh painting", ""],
+  ["style", "🕹️ Pixel art", "turn it into pixel art", ""],
+  ["style", "🏯 Ukiyo-e", "make it a Japanese woodblock print", ""],
 ];
+const MASK_RGB = [255, 61, 127];
 
 const $ = (id) => document.getElementById(id);
-const stage = $("stage"), before = $("before"), after = $("after");
+const stage = $("stage"), before = $("before"), after = $("after"), mask = $("mask");
+const mctx = mask.getContext("2d", { willReadFrequently: true });
 
-// original: the uploaded photo. history: one entry per applied edit, newest last.
-const state = { original: null, history: [], busy: false };
-const current = () => state.history.at(-1) ?? state.original;
+// original: the uploaded photo. history: one entry per applied edit, newest last; each entry holds
+// its variations ({blob, url, seed}) and which one is chosen.
+// mode: "whole" or "area". view: in area mode, "mask" shows the selection, "compare" the before/after.
+const state = { original: null, history: [], busy: false, mode: "whole", view: "mask" };
+const pick = (e) => (e.variants ? e.variants[e.chosen] : e);
+const current = () => pick(state.history.at(-1) ?? state.original);
+const forget = (e) => e.variants.forEach((v) => URL.revokeObjectURL(v.url));
+const source = () => ($("stack").checked ? current() : state.original);
 
 /* ---------- presets & sliders ---------- */
-for (const [label, text] of PRESETS) {
+const chips = PRESETS.map(([group, label, text, region]) => {
   const b = document.createElement("button");
   b.className = "chip"; b.type = "button"; b.textContent = label; b.setAttribute("aria-pressed", "false");
-  b.onclick = () => { $("prompt").value = text; syncChips(); refresh(); $("prompt").focus(); };
-  $("presets").append(b);
-}
+  b.onclick = () => { $("prompt").value = text; if (region) $("region").value = region; syncChips(); refresh(); };
+  $(group === "scene" ? "presets-scene" : "presets-style").append(b);
+  return b;
+});
 function syncChips() {
   const v = $("prompt").value.trim();
-  [...$("presets").children].forEach((b, i) => b.setAttribute("aria-pressed", String(PRESETS[i][1] === v)));
+  chips.forEach((b, i) => b.setAttribute("aria-pressed", String(PRESETS[i][2] === v)));
 }
 $("prompt").addEventListener("input", () => { syncChips(); refresh(); });
 
-for (const id of ["sT", "sI", "steps"]) {
-  const show = () => $(id + "-out").textContent = id === "steps" ? $(id).value : Number($(id).value).toFixed(id === "sI" ? 2 : 1);
+for (const id of ["sT", "sI", "steps", "brush"]) {
+  const show = () => $(id + "-out").textContent =
+    id === "sT" ? Number($(id).value).toFixed(1) : id === "sI" ? Number($(id).value).toFixed(2) : $(id).value;
   $(id).addEventListener("input", show); show();
 }
-$("reroll").onclick = () => $("seed").value = Math.floor(Math.random() * 2 ** 31);
-
+$("reroll").onclick = () => $("seed").value = Math.floor(Math.random() * 2147483646);
 $("compare").addEventListener("input", (e) => stage.style.setProperty("--pos", e.target.value + "%"));
+$("stack").addEventListener("change", render);
 
 /* ---------- upload ---------- */
 const drop = $("drop");
-drop.onclick = () => $("file").click();
-drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
-$("file").onchange = (e) => e.target.files[0] && loadPhoto(e.target.files[0]);
+$("pick").onclick = () => $("file").click();
 $("new-photo").onclick = () => $("file").click();
+$("file").onchange = (e) => e.target.files[0] && loadPhoto(e.target.files[0]);
+$("file-camera").onchange = (e) => e.target.files[0] && loadPhoto(e.target.files[0]);
 for (const ev of ["dragenter", "dragover"]) stage.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); });
 for (const ev of ["dragleave", "drop"]) stage.addEventListener(ev, () => drop.classList.remove("over"));
 stage.addEventListener("drop", (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; f && loadPhoto(f); });
@@ -317,52 +406,223 @@ function loadPhoto(file) {
   if (state.busy) return;
   if (!file.type.startsWith("image/")) return setStatus("That file isn't an image. Choose a JPG or PNG.", true);
   if (file.size > 12 * 1024 * 1024) return setStatus("That image is over 12 MB. Choose a smaller one.", true);
-  clearHistory();
-  if (state.original) URL.revokeObjectURL(state.original.url);
-  state.original = { blob: file, url: URL.createObjectURL(file), prompt: null };
-  $("file").value = "";
-  setStatus("");
-  render();
+  const url = URL.createObjectURL(file);
+  const probe = new Image();
+  probe.onload = () => {
+    clearHistory();
+    if (state.original) URL.revokeObjectURL(state.original.url);
+    state.original = { blob: file, url, prompt: null };
+    sizeMask(probe.naturalWidth, probe.naturalHeight);
+    state.view = "mask";
+    $("file").value = ""; $("file-camera").value = "";
+    setStatus("");
+    render();
+  };
+  probe.onerror = () => {
+    URL.revokeObjectURL(url);
+    setStatus("This browser can't open that image. iPhone HEIC photos need to be exported as JPG first.", true);
+  };
+  probe.src = url;
 }
-
 function clearHistory() {
-  state.history.forEach((h) => URL.revokeObjectURL(h.url));
+  state.history.forEach(forget);
   state.history = [];
 }
 
+/* ---------- camera ---------- */
+let camStream = null, facing = "user";
+async function openCamera() {
+  if (state.busy) return;
+  if (!navigator.mediaDevices?.getUserMedia) { $("file-camera").click(); return; }   // e.g. plain http on a LAN
+  $("cam").showModal();
+  await startCamera();
+}
+async function startCamera() {
+  stopCamera();
+  $("cam-msg").textContent = "";
+  $("snap").disabled = true;
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false,
+    });
+    $("cam-video").srcObject = camStream;
+    $("cam-video").classList.toggle("mirror", facing === "user");
+    $("snap").disabled = false;
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+    $("flip").hidden = cams.length < 2;
+  } catch (err) {
+    $("cam-msg").textContent =
+      err.name === "NotAllowedError" ? "Camera access was blocked. Allow it in your browser's site settings, then try again." :
+      err.name === "NotFoundError" ? "No camera was found on this device." :
+      err.name === "NotReadableError" ? "Another app is using the camera. Close it and try again." :
+      "The camera couldn't start.";
+  }
+}
+function stopCamera() { camStream?.getTracks().forEach((t) => t.stop()); camStream = null; }
+$("camera").onclick = openCamera;
+$("retake").onclick = openCamera;
+$("cam").addEventListener("close", stopCamera);
+$("cam-cancel").onclick = () => $("cam").close();
+$("flip").onclick = () => { facing = facing === "user" ? "environment" : "user"; startCamera(); };
+$("snap").onclick = () => {
+  const v = $("cam-video");
+  if (!v.videoWidth) return;
+  const c = document.createElement("canvas");
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  const x = c.getContext("2d");
+  if (facing === "user") { x.translate(c.width, 0); x.scale(-1, 1); }   // save it the way it looked on screen
+  x.drawImage(v, 0, 0);
+  c.toBlob((blob) => { $("cam").close(); if (blob) loadPhoto(blob); }, "image/jpeg", 0.92);
+};
+
+/* ---------- selection mask ---------- */
+function sizeMask(w, h) {
+  const s = Math.min(1, 768 / Math.max(w, h));
+  mask.width = Math.round(w * s); mask.height = Math.round(h * s);   // also clears it
+}
+function placeMask() {
+  const iw = after.naturalWidth, ih = after.naturalHeight;
+  if (!iw || !ih) return;
+  const sw = stage.clientWidth, sh = stage.clientHeight, s = Math.min(sw / iw, sh / ih);
+  const w = iw * s, h = ih * s;
+  Object.assign(mask.style, { width: w + "px", height: h + "px", left: (sw - w) / 2 + "px", top: (sh - h) / 2 + "px" });
+}
+after.addEventListener("load", placeMask);
+new ResizeObserver(placeMask).observe(stage);
+
+let drawing = false, last = null;
+const erasing = () => document.querySelector('input[name="brush-mode"]:checked').value === "erase";
+function toMask(e) {
+  const r = mask.getBoundingClientRect();
+  return [(e.clientX - r.left) * mask.width / r.width, (e.clientY - r.top) * mask.height / r.height];
+}
+function brushWidth() { return $("brush").value * mask.width / mask.getBoundingClientRect().width; }
+function paint(from, to) {
+  mctx.globalCompositeOperation = erasing() ? "destination-out" : "source-over";
+  mctx.strokeStyle = mctx.fillStyle = `rgb(${MASK_RGB})`;
+  mctx.lineWidth = brushWidth(); mctx.lineCap = mctx.lineJoin = "round";
+  if (from === to) { mctx.beginPath(); mctx.arc(...to, mctx.lineWidth / 2, 0, Math.PI * 2); mctx.fill(); return; }
+  mctx.beginPath(); mctx.moveTo(...from); mctx.lineTo(...to); mctx.stroke();
+}
+mask.addEventListener("pointerdown", (e) => {
+  if (state.busy) return;
+  drawing = true; mask.setPointerCapture(e.pointerId);
+  last = toMask(e); paint(last, last);
+});
+mask.addEventListener("pointermove", (e) => { if (!drawing) return; const p = toMask(e); paint(last, p); last = p; });
+for (const ev of ["pointerup", "pointercancel"]) mask.addEventListener(ev, () => drawing = false);
+
+function maskIsEmpty() {
+  const d = mctx.getImageData(0, 0, mask.width, mask.height).data;
+  for (let i = 3; i < d.length; i += 4) if (d[i] > 20) return false;
+  return true;
+}
+function maskBlob() {   // white = may change, black = keep
+  const { width: w, height: h } = mask;
+  const src = mctx.getImageData(0, 0, w, h).data;
+  const out = document.createElement("canvas"); out.width = w; out.height = h;
+  const octx = out.getContext("2d"), img = octx.createImageData(w, h);
+  for (let i = 0; i < src.length; i += 4) {
+    const v = src[i + 3] > 20 ? 255 : 0;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  return new Promise((resolve) => out.toBlob(resolve, "image/png"));
+}
+async function setMaskFrom(blob) {
+  const bmp = await createImageBitmap(blob);
+  const tmp = document.createElement("canvas"); tmp.width = mask.width; tmp.height = mask.height;
+  const t = tmp.getContext("2d"); t.drawImage(bmp, 0, 0, mask.width, mask.height);
+  const d = t.getImageData(0, 0, mask.width, mask.height);
+  for (let i = 0; i < d.data.length; i += 4) {
+    const on = d.data[i] > 127;
+    [d.data[i], d.data[i + 1], d.data[i + 2]] = MASK_RGB; d.data[i + 3] = on ? 255 : 0;
+  }
+  mctx.putImageData(d, 0, 0);
+}
+function showSelection() { if (state.view !== "mask") { state.view = "mask"; render(); } }
+$("brush").addEventListener("input", showSelection);
+document.querySelectorAll('input[name="brush-mode"]').forEach((r) => r.addEventListener("change", showSelection));
+$("clear-mask").onclick = () => { mctx.clearRect(0, 0, mask.width, mask.height); showSelection(); };
+$("view-toggle").onclick = () => { state.view = state.view === "mask" ? "compare" : "mask"; render(); };
+document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener("change", () => {
+  state.mode = r.value; state.view = state.mode === "area" ? "mask" : "compare"; render();
+}));
+
+async function autoSelect() {
+  const region = $("region").value.trim();
+  if (!state.original || state.busy) return;
+  if (!region) return setStatus("Type which part to select, like “hair”.", true);
+  const form = new FormData();
+  form.append("image", source().blob, "photo.png");
+  form.append("region", region);
+  setBusy(true, `Finding the ${region}…`); setStatus("");
+  try {
+    const res = await fetch("/api/mask", { method: "POST", body: form });
+    if (!res.ok) throw new Error(await errorText(res));
+    await setMaskFrom(await res.blob());
+    state.view = "mask";
+    setStatus("Selected. Touch up the edges with the brush if needed.");
+  } catch (err) {
+    setStatus(err instanceof TypeError ? "Can't reach the server. Is app.server still running?" : err.message, true);
+  } finally { setBusy(false); render(); }
+}
+$("select").onclick = autoSelect;
+$("region").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); autoSelect(); } });
+
 /* ---------- edit ---------- */
+async function errorText(res) {
+  try { return (await res.json()).detail ?? `The server returned an error (${res.status}).`; }
+  catch { return `The server returned an error (${res.status}).`; }
+}
 async function applyEdit() {
   const prompt = $("prompt").value.trim();
   if (!state.original || !prompt || state.busy) return;
-  const source = $("stack").checked ? current() : state.original;
-
-  const form = new FormData();
-  form.append("image", source.blob, "photo.png");
-  form.append("prompt", prompt);
-  form.append("guidance_scale", $("sT").value);
-  form.append("image_guidance_scale", $("sI").value);
-  form.append("steps", $("steps").value);
-  form.append("seed", $("seed").value || "0");
-
-  setBusy(true);
-  setStatus("");
-  try {
-    const res = await fetch("/api/edit", { method: "POST", body: form });
-    if (!res.ok) {
-      let msg = `The server returned an error (${res.status}).`;
-      try { msg = (await res.json()).detail ?? msg; } catch {}
-      throw new Error(msg);
-    }
-    const blob = await res.blob();
-    state.history.push({ blob, url: URL.createObjectURL(blob), prompt });
-    stage.style.setProperty("--pos", "50%"); $("compare").value = 50;
-    render();
-    setStatus(`Edited in ${res.headers.get("X-Elapsed") ?? "?"} s. Drag across the photo to compare.`);
-  } catch (err) {
-    setStatus(err instanceof TypeError ? "Can't reach the server. Is app.server still running?" : err.message, true);
-  } finally {
-    setBusy(false);
+  if (state.mode === "area" && maskIsEmpty()) {
+    state.view = "mask"; render();
+    return setStatus("Select the part to change first: paint over it, or use Auto-select.", true);
   }
+  const count = Number(document.querySelector('input[name="count"]:checked').value);
+  const baseSeed = Number($("seed").value) || 0;
+  const src = source(), maskPng = state.mode === "area" ? await maskBlob() : null;
+  const variants = [];
+  let seconds = 0, failure = null;
+
+  setStatus("");
+  for (let k = 0; k < count; k++) {
+    setBusy(true, count > 1 ? `Making version ${k + 1} of ${count}…` : "Editing your photo…");
+    const form = new FormData();
+    form.append("image", src.blob, "photo.png");
+    form.append("prompt", prompt);
+    form.append("guidance_scale", $("sT").value);
+    form.append("image_guidance_scale", $("sI").value);
+    form.append("steps", $("steps").value);
+    form.append("seed", String(baseSeed + k));
+    if (maskPng) form.append("mask", maskPng, "mask.png");
+    try {
+      const res = await fetch("/api/edit", { method: "POST", body: form });
+      if (!res.ok) throw new Error(await errorText(res));
+      const blob = await res.blob();
+      variants.push({ blob, url: URL.createObjectURL(blob), seed: baseSeed + k });
+      seconds += Number(res.headers.get("X-Elapsed")) || 0;
+    } catch (err) {
+      failure = err instanceof TypeError ? "Can't reach the server. Is app.server still running?" : err.message;
+      if (err instanceof TypeError) break;   // server gone: no point trying the rest
+    }
+  }
+  setBusy(false);
+
+  if (!variants.length) return setStatus(failure ?? "Something went wrong.", true);
+  state.history.push({ prompt, variants, chosen: 0 });
+  state.view = "compare";
+  stage.style.setProperty("--pos", "50%"); $("compare").value = 50;
+  render();
+  const skipped = count - variants.length;
+  setStatus(
+    (variants.length > 1 ? `Made ${variants.length} versions in ${seconds.toFixed(0)} s. Click one below to pick it. ` :
+      `Edited in ${seconds.toFixed(1)} s. `) +
+    "Drag across the photo to compare." + (skipped ? ` (${skipped} version${skipped > 1 ? "s" : ""} failed: ${failure})` : ""),
+    !!skipped && variants.length === 0);
 }
 $("apply").onclick = applyEdit;
 $("prompt").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) applyEdit(); });
@@ -370,50 +630,79 @@ $("prompt").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.met
 /* ---------- undo / download ---------- */
 function undo() {
   if (state.busy || !state.history.length) return;
-  URL.revokeObjectURL(state.history.pop().url);
+  forget(state.history.pop());
   setStatus(state.history.length ? "Went back one edit." : "Back to your original photo.");
   render();
 }
 $("undo").onclick = undo;
 document.addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey && document.activeElement.tagName !== "TEXTAREA") {
-    e.preventDefault(); undo();
-  }
+  const typing = ["TEXTAREA", "INPUT"].includes(document.activeElement.tagName);
+  if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey && !typing) { e.preventDefault(); undo(); }
 });
 $("download").onclick = () => {
   const a = document.createElement("a");
-  a.href = current().url; a.download = `photo-booth-edit-${state.history.length}.png`; a.click();
+  a.href = current().url; a.download = `scene-shift-${state.history.length}.png`; a.click();
 };
 
 /* ---------- view ---------- */
 function render() {
   const hasPhoto = !!state.original, last = state.history.at(-1);
+  const painting = hasPhoto && state.mode === "area" && (state.view === "mask" || !last);
   stage.classList.toggle("loaded", hasPhoto);
-  stage.classList.toggle("has-edit", !!last);
+  stage.classList.toggle("painting", painting);
+  stage.classList.toggle("has-edit", !!last && !painting);
   if (hasPhoto) {
-    before.src = state.original.url;
-    after.src = current().url;
+    const shown = painting ? source() : current();
+    if (after.src !== shown.url) after.src = shown.url;
+    if (before.src !== state.original.url) before.src = state.original.url;
     before.alt = "Your original photo";
-    after.alt = last ? `Edited photo: ${last.prompt}` : "Your original photo";
+    after.alt = painting ? "Photo with the selected area highlighted" : last ? `Edited photo: ${last.prompt}` : "Your original photo";
+    placeMask();
   }
+  $("area-tools").hidden = state.mode !== "area";
+  $("view-toggle").hidden = !(state.mode === "area" && last);
+  $("view-toggle").textContent = painting ? "Show before & after" : "Show selection";
+
+  const strip = $("variants");
+  strip.replaceChildren();
+  strip.hidden = !(last && last.variants.length > 1);
+  if (!strip.hidden) last.variants.forEach((v, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("aria-pressed", String(i === last.chosen));
+    b.setAttribute("aria-label", `Version ${i + 1}`); b.disabled = state.busy;
+    const im = document.createElement("img"); im.src = v.url; im.alt = "";
+    b.append(im);
+    b.onclick = () => { last.chosen = i; state.view = "compare"; render(); };
+    strip.append(b);
+  });
+
   const cap = $("caption");
-  if (!hasPhoto) cap.textContent = "your photo goes here";
-  else if (!last) cap.textContent = "original";
+  if (!hasPhoto) cap.textContent = "your scene goes here";
+  else if (painting) {
+    cap.textContent = "select what should change";
+    const small = document.createElement("small");
+    small.textContent = "Pink areas can change. Everything else is kept exactly.";
+    cap.append(small);
+  } else if (!last) cap.textContent = "original";
   else {
     cap.textContent = last.prompt;
     const small = document.createElement("small");
-    small.textContent = state.history.length === 1 ? "1 edit" : `${state.history.length} edits stacked`;
+    const n = state.history.length;
+    small.textContent = (n === 1 ? "1 edit" : `${n} edits stacked`) +
+      (last.variants.length > 1 ? ` · version ${last.chosen + 1} of ${last.variants.length}` : "");
     cap.append(small);
   }
   refresh();
 }
 function refresh() {
-  $("apply").disabled = state.busy || !state.original || !$("prompt").value.trim();
-  $("undo").disabled = state.busy || !state.history.length;
-  $("download").disabled = state.busy || !state.original;
-  $("new-photo").disabled = state.busy;
+  const b = state.busy;
+  $("apply").disabled = b || !state.original || !$("prompt").value.trim();
+  $("undo").disabled = b || !state.history.length;
+  $("download").disabled = b || !state.original;
+  for (const id of ["new-photo", "retake", "select", "clear-mask", "view-toggle"]) $(id).disabled = b;
+  $("select").disabled = b || !state.original;
 }
-function setBusy(b) { state.busy = b; stage.classList.toggle("working", b); refresh(); }
+function setBusy(b, text) { state.busy = b; if (text) $("busy-text").textContent = text; stage.classList.toggle("working", b); refresh(); }
 function setStatus(msg, isError = false) { $("status").textContent = msg; $("status").classList.toggle("error", isError); }
 
 fetch("/api/health").then((r) => r.json()).then((i) => {
