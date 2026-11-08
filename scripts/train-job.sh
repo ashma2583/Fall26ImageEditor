@@ -20,4 +20,4 @@ nvidia-smi
 python -c "import torch; assert torch.cuda.is_available()"
 
 # Train
-python -u train.py --config configs/baseline.yaml
+python -u train.py --config configs/baseline.yaml "$@"
