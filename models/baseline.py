@@ -5,17 +5,20 @@ from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
 
 class InstructPix2PixModel(nn.Module):
-    def __init__(self, model_id, device, source_drop_rate, instruction_drop_rate):
+    def __init__(self, model_id, device, source_drop_rate, instruction_drop_rate, model_path = None):
         super().__init__()
         self.device = torch.device(device)
         self.source_drop_rate = source_drop_rate
         self.instruction_drop_rate = instruction_drop_rate
         if not 0 <= source_drop_rate <= 1 or not 0 <= instruction_drop_rate <= 1:
             raise ValueError("Condition dropout rates must be between 0 and 1")
+        if model_path == None:
+            self.unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to(device)
+        else:
+            self.unet = UNet2DConditionModel.from_pretrained(model_path).to(self.device)
         self.tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
         self.text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder").to(device)
         self.vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae").to(device)
-        self.unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to(device)
         self.noise_scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
 
         old_conv = self.unet.conv_in
@@ -84,12 +87,3 @@ class InstructPix2PixModel(nn.Module):
 
     def save_model(self, path):
         self.unet.save_pretrained(path)
-
-    def load(self, path):
-        from diffusers import UNet2DConditionModel
-
-        self.unet = UNet2DConditionModel.from_pretrained(
-            path
-        ).to(self.device)
-
-        self.unet.requires_grad_(True)

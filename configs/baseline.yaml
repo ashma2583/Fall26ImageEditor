@@ -25,5 +25,5 @@ training:
 
 inference:
   num_inference_steps: 30
-  guidance_scale: 7.5
-  image_guidance_scale: 1.5
+  source_guidance_scale: 1.5
+  instruction_guidance_scale: 7.5
