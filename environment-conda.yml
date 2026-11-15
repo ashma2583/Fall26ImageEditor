@@ -15,3 +15,4 @@ dependencies:
   - ipykernel
   - python-dotenv
   - pyyaml
+  - numpy
