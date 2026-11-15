@@ -53,8 +53,8 @@ def prepare_conditioning(model, source, instruction):
     pixels = torch.from_numpy(np.asarray(source, dtype=np.float32).copy())
     pixels = pixels.permute(2, 0, 1).unsqueeze(0).to(device=device, dtype=vae_dtype)
     pixels = pixels / 127.5 - 1.0
-    source_latents = model.vae.encode(pixels).latent_dist.mode()
-    source_latents = (source_latents * model.vae.config.scaling_factor).to(dtype)
+    # Unscaled, matching how the source is encoded in training.
+    source_latents = model.vae.encode(pixels).latent_dist.mode().to(dtype)
     image_conditions = torch.cat(
         [source_latents, source_latents, torch.zeros_like(source_latents)], dim=0
     )

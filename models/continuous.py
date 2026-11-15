@@ -161,9 +161,12 @@ class ContinuousInstructPix2PixModel(nn.Module):
 
         scheduler = EulerAncestralDiscreteScheduler.from_config(self.noise_scheduler.config)
         scheduler.set_timesteps(num_inference_steps, device=self.device)
+        # Draw on the generator's device in float32, as inference.py does, so a seed
+        # gives the same starting noise for both models on any device.
         latents = torch.randn(
-            original_latents.shape, generator=generator, device=self.device, dtype=dtype,
-        ) * scheduler.init_noise_sigma
+            original_latents.shape, generator=generator,
+            device=generator.device if generator is not None else self.device, dtype=torch.float32,
+        ).to(self.device, dtype) * scheduler.init_noise_sigma
         for t in scheduler.timesteps:
             noisy = scheduler.scale_model_input(torch.cat([latents] * 4), t)
             model_input = torch.cat([noisy, previous_in, original_in], dim=1)

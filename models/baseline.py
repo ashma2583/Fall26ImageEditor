@@ -55,7 +55,8 @@ class InstructPix2PixModel(nn.Module):
         """
 
         with torch.no_grad():
-            source_latents = self.vae.encode(source).latent_dist.sample() * self.vae.config.scaling_factor
+            # IP2P conditions on the unscaled latent mode, not the scaled diffusion latent.
+            source_latents = self.vae.encode(source).latent_dist.mode()
             target_latents = self.vae.encode(target).latent_dist.sample() * self.vae.config.scaling_factor
             if self.training and self.source_drop_rate:
                 drop_source = torch.rand(source.shape[0], device=source.device) < self.source_drop_rate

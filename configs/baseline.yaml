@@ -1,6 +1,7 @@
 experiment:
   name: magicbrush_baseline
-  output_dir: checkpoints/magicbrush
+  # A fresh folder: checkpoints/magicbrush holds runs from before the source-scaling fix.
+  output_dir: checkpoints/magicbrush_baseline
 
 model:
   type: baseline
