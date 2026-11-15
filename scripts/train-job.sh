@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name=ml-train
-#SBATCH --account=YOUR_SUBACCOUNT
+#SBATCH --job-name=ip2p-continuous
+#SBATCH --account=mds_team
 #SBATCH --partition=spgpu
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
@@ -23,4 +23,4 @@ nvidia-smi
 python -c "import torch; assert torch.cuda.is_available()"
 
 # Train
-python -u train.py --config configs/baseline.yaml
+python -u train.py --config configs/continuous.yaml

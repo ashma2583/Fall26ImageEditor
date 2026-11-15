@@ -1,4 +1,4 @@
-"""Train the InstructPix2Pix baseline on MagicBrush."""
+"""Train an InstructPix2Pix model (baseline or continuous) on MagicBrush."""
 
 import argparse
 import random
@@ -11,24 +11,51 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from models.baseline import InstructPix2PixModel
+from models.continuous import ContinuousInstructPix2PixModel
 from data import load_magicbrush
 
 
 ROOT = Path(__file__).resolve().parent
 
 
+MODEL_TYPES = ("baseline", "continuous")
+
+
 def collate_batch(rows):
-    return {
-        "source": torch.stack([torch.as_tensor(row["source"]) for row in rows]),
-        "target": torch.stack([torch.as_tensor(row["target"]) for row in rows]),
-        "instruction": [row["instruction"] for row in rows],
+    batch = {
+        key: torch.stack([torch.as_tensor(row[key]) for row in rows])
+        for key in ("source", "target", "original") if key in rows[0]
     }
+    batch["instruction"] = [row["instruction"] for row in rows]
+    return batch
+
+
+def build_model(model_type, model_settings, settings, device):
+    if model_type == "continuous":
+        return ContinuousInstructPix2PixModel(
+            model_id=model_settings["pretrained"],
+            device=device,
+            previous_drop_rate=float(settings.get("previous_drop_rate", 0.0)),
+            original_drop_rate=float(settings.get("original_drop_rate", 0.0)),
+            instruction_drop_rate=float(settings.get("instruction_drop_rate", 0.0)),
+            previous_degrade_rate=float(settings.get("previous_degrade_rate", 0.0)),
+        )
+    return InstructPix2PixModel(
+        model_id=model_settings["pretrained"],
+        device=device,
+        source_drop_rate=float(settings.get("source_drop_rate", 0.0)),
+        instruction_drop_rate=float(settings.get("instruction_drop_rate", 0.0)),
+    )
 
 
 def train(config):
     settings = config["training"]
     model_settings = config["model"]
     data_settings = config["dataset"]
+    model_type = model_settings.get("type", "baseline")
+    if model_type not in MODEL_TYPES:
+        raise ValueError(f"model.type must be one of {MODEL_TYPES}, got {model_type!r}")
+    continuous = model_type == "continuous"
     seed = int(settings["seed"])
     random.seed(seed)
     torch.manual_seed(seed)
@@ -60,6 +87,7 @@ def train(config):
         name=data_settings.get("name", "osunlp/MagicBrush"),
         resolution=int(data_settings["resolution"]),
         streaming=bool(data_settings.get("streaming", False)),
+        include_original=continuous,
     )
     if data_settings.get("streaming", False):
         train_dataset = train_dataset.shuffle(
@@ -69,12 +97,7 @@ def train(config):
         train_dataset = train_dataset.shuffle(seed=seed)
     loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_batch)
 
-    model = InstructPix2PixModel(
-        model_id=model_settings["pretrained"],
-        device=device,
-        source_drop_rate=float(settings.get("source_drop_rate", 0.0)),
-        instruction_drop_rate=float(settings.get("instruction_drop_rate", 0.0)),
-    )
+    model = build_model(model_type, model_settings, settings, device)
     optimizer = torch.optim.AdamW(
         model.unet.parameters(),
         lr=float(settings["learning_rate"]),
@@ -101,7 +124,11 @@ def train(config):
             autocast = (torch.autocast(device_type=device.type, dtype=autocast_dtype)
                         if precision != "no" else nullcontext())
             with autocast:
-                loss = model(source, target, batch["instruction"])
+                if continuous:
+                    original = batch["original"].to(device)
+                    loss = model(original, source, target, batch["instruction"])
+                else:
+                    loss = model(source, target, batch["instruction"])
             scaler.scale(loss / accumulation).backward()
             total_loss += loss.detach().item()
             batches += 1

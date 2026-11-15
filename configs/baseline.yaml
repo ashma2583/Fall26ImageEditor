@@ -3,6 +3,7 @@ experiment:
   output_dir: checkpoints/magicbrush
 
 model:
+  type: baseline
   pretrained: timbrooks/instruct-pix2pix
   device: cuda
 
