@@ -5,14 +5,18 @@ from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
 
 class InstructPix2PixModel(nn.Module):
-    def __init__(self, model_id, device, source_drop_rate, instruction_drop_rate, model_path = None):
+    def __init__(self, model_id, device, source_drop_rate, instruction_drop_rate,
+                 model_path=None, conditioning_dropout_prob=None):
         super().__init__()
         self.device = torch.device(device)
         self.source_drop_rate = source_drop_rate
         self.instruction_drop_rate = instruction_drop_rate
+        self.conditioning_dropout_prob = conditioning_dropout_prob
         if not 0 <= source_drop_rate <= 1 or not 0 <= instruction_drop_rate <= 1:
             raise ValueError("Condition dropout rates must be between 0 and 1")
-        if model_path == None:
+        if conditioning_dropout_prob is not None and not 0 <= conditioning_dropout_prob <= 1 / 3:
+            raise ValueError("conditioning_dropout_prob must be between 0 and 1/3")
+        if model_path is None:
             self.unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to(device)
         else:
             self.unet = UNet2DConditionModel.from_pretrained(model_path).to(self.device)
@@ -22,7 +26,9 @@ class InstructPix2PixModel(nn.Module):
         self.noise_scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
 
         old_conv = self.unet.conv_in
-        if old_conv.in_channels == 4:
+        if model_path is None:
+            if old_conv.in_channels != 4:
+                raise ValueError(f"Fresh baseline training requires a 4-channel SD UNet, got {old_conv.in_channels}")
             new_conv = nn.Conv2d(
                 8, old_conv.out_channels,
                 kernel_size=old_conv.kernel_size,
@@ -37,7 +43,7 @@ class InstructPix2PixModel(nn.Module):
             self.unet.conv_in = new_conv
             self.unet.register_to_config(in_channels=8)
         elif old_conv.in_channels != 8:
-            raise ValueError(f"Expected a 4- or 8-channel UNet, got {old_conv.in_channels}")
+            raise ValueError(f"Expected an 8-channel baseline checkpoint, got {old_conv.in_channels}")
 
         self.vae.requires_grad_(False)
         self.text_encoder.requires_grad_(False)
@@ -55,14 +61,23 @@ class InstructPix2PixModel(nn.Module):
         """
 
         with torch.no_grad():
-            source_latents = self.vae.encode(source).latent_dist.sample() * self.vae.config.scaling_factor
+            # InstructPix2Pix conditions on the unscaled posterior mode.
+            source_latents = self.vae.encode(source).latent_dist.mode()
             target_latents = self.vae.encode(target).latent_dist.sample() * self.vae.config.scaling_factor
-            if self.training and self.source_drop_rate:
-                drop_source = torch.rand(source.shape[0], device=source.device) < self.source_drop_rate
+            if self.training and self.conditioning_dropout_prob is not None:
+                p = self.conditioning_dropout_prob
+                random_p = torch.rand(source.shape[0], device=source.device)
+                drop_source = (random_p >= p) & (random_p < 3 * p)
+                drop_instruction = random_p < 2 * p
                 source_latents = source_latents.masked_fill(drop_source[:, None, None, None], 0)
-            if self.training and self.instruction_drop_rate:
-                instructions = ["" if torch.rand(()).item() < self.instruction_drop_rate else text
-                                for text in instructions]
+                instructions = ["" if drop else text for drop, text in zip(drop_instruction.tolist(), instructions)]
+            else:
+                if self.training and self.source_drop_rate:
+                    drop_source = torch.rand(source.shape[0], device=source.device) < self.source_drop_rate
+                    source_latents = source_latents.masked_fill(drop_source[:, None, None, None], 0)
+                if self.training and self.instruction_drop_rate:
+                    instructions = ["" if torch.rand(()).item() < self.instruction_drop_rate else text
+                                    for text in instructions]
             input_ids = self.tokenizer(
                 instructions,
                 padding="max_length",

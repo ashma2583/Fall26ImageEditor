@@ -12,7 +12,8 @@ from tqdm.auto import tqdm
 
 from models.baseline import InstructPix2PixModel
 from models.continuous import ContinuousInstructPix2PixModel
-from data import load_magicbrush
+from data import load_instructpix2pix, load_magicbrush, load_magicbrush_validation
+from evaluation import evaluate_baseline
 
 
 ROOT = Path(__file__).resolve().parent
@@ -94,6 +95,10 @@ def build_model(model_type, model_settings, settings, device, resume_checkpoint=
         source_drop_rate=float(settings.get("source_drop_rate", 0.0)),
         instruction_drop_rate=float(settings.get("instruction_drop_rate", 0.0)),
         model_path=model_path,
+        conditioning_dropout_prob=(
+            float(settings["conditioning_dropout_prob"])
+            if "conditioning_dropout_prob" in settings else None
+        ),
     )
 
 
@@ -136,18 +141,35 @@ def train(config, resume_from=None, epochs_override=None):
     if min(accumulation, batch_size, epochs) < 1:
         raise ValueError("gradient_accumulation_steps, batch_size, and epochs must be positive")
 
-    train_dataset, _ = load_magicbrush(
-        name=data_settings.get("name", "osunlp/MagicBrush"),
-        resolution=int(data_settings["resolution"]),
-        streaming=bool(data_settings.get("streaming", False)),
-        include_original=continuous,
-    )
+    dataset_type = data_settings.get("type", "magicbrush")
+    if dataset_type == "magicbrush":
+        train_dataset, _ = load_magicbrush(
+            name=data_settings.get("name", "osunlp/MagicBrush"),
+            resolution=int(data_settings["resolution"]),
+            streaming=bool(data_settings.get("streaming", False)),
+            include_original=continuous,
+        )
+    elif dataset_type == "instructpix2pix" and not continuous:
+        train_dataset = load_instructpix2pix(
+            name=data_settings.get("name", "timbrooks/instructpix2pix-clip-filtered"),
+            resolution=int(data_settings["resolution"]),
+            streaming=bool(data_settings.get("streaming", True)),
+        )
+    else:
+        raise ValueError(f"Unsupported dataset.type {dataset_type!r} for model.type {model_type!r}")
     if data_settings.get("streaming", False):
         train_dataset = train_dataset.shuffle(
-            buffer_size=int(data_settings.get("shuffle_buffer_size", 64)), seed=seed
+            buffer_size=int(data_settings.get("shuffle_buffer_size", 1000)), seed=seed
         )
     else:
         train_dataset = train_dataset.shuffle(seed=seed)
+    max_samples = data_settings.get("max_train_samples")
+    if max_samples is not None:
+        max_samples = int(max_samples)
+        if max_samples < 1:
+            raise ValueError("dataset.max_train_samples must be positive")
+        train_dataset = (train_dataset.take(max_samples) if data_settings.get("streaming", False)
+                         else train_dataset.select(range(min(max_samples, len(train_dataset)))))
     loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_batch)
 
     model = build_model(model_type, model_settings, settings, device, resume_checkpoint)
@@ -168,10 +190,34 @@ def train(config, resume_from=None, epochs_override=None):
     model.text_encoder.eval()
     optimizer.zero_grad(set_to_none=True)
     final_epoch = start_epoch + epochs
+    max_grad_norm = float(settings.get("max_grad_norm", 1.0))
+    evaluation_settings = config.get("evaluation", {})
+    evaluate_during_training = not continuous and bool(evaluation_settings.get("enabled", False))
+    evaluation_every_steps = int(evaluation_settings.get("every_steps", 2000))
+    if evaluate_during_training and evaluation_every_steps < 1:
+        raise ValueError("evaluation.every_steps must be positive")
+    evaluation_examples = (
+        load_magicbrush_validation(
+            resolution=int(data_settings["resolution"]),
+            count=int(evaluation_settings.get("num_examples", 24)),
+            seed=int(settings["seed"]),
+            name=evaluation_settings.get("name", "osunlp/MagicBrush"),
+        ) if evaluate_during_training else None
+    )
+    global_step = 0
+    last_evaluation_step = None
+    if evaluate_during_training:
+        evaluate_baseline(model, evaluation_examples, output_dir, config,
+                          start_epoch, global_step, precision)
+        last_evaluation_step = global_step
     for epoch in range(start_epoch + 1, final_epoch + 1):
+        if hasattr(train_dataset, "set_epoch"):
+            train_dataset.set_epoch(epoch - 1)
         pending = 0
         total_loss = 0.0
         batches = 0
+        optimizer_steps = 0
+        skipped_steps = 0
         for batch in tqdm(loader, desc=f"Epoch {epoch}/{final_epoch}"):
             source = batch["source"].to(device)
             target = batch["target"].to(device)
@@ -188,10 +234,23 @@ def train(config, resume_from=None, epochs_override=None):
             batches += 1
             pending += 1
             if pending == accumulation:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.unet.parameters(), max_grad_norm)
+                old_scale = scaler.get_scale()
                 scaler.step(optimizer)
                 scaler.update()
+                if scaler.is_enabled() and scaler.get_scale() < old_scale:
+                    skipped_steps += 1
+                else:
+                    optimizer_steps += 1
+                    global_step += 1
                 optimizer.zero_grad(set_to_none=True)
                 pending = 0
+                if evaluate_during_training and global_step and global_step % evaluation_every_steps == 0 \
+                        and last_evaluation_step != global_step:
+                    evaluate_baseline(model, evaluation_examples, output_dir, config,
+                                      epoch, global_step, precision)
+                    last_evaluation_step = global_step
 
         if batches == 0:
             raise RuntimeError("The training dataset yielded no batches.")
@@ -200,12 +259,25 @@ def train(config, resume_from=None, epochs_override=None):
             for parameter in model.unet.parameters():
                 if parameter.grad is not None:
                     parameter.grad.mul_(accumulation / pending)
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.unet.parameters(), max_grad_norm)
+            old_scale = scaler.get_scale()
             scaler.step(optimizer)
             scaler.update()
+            if scaler.is_enabled() and scaler.get_scale() < old_scale:
+                skipped_steps += 1
+            else:
+                optimizer_steps += 1
+                global_step += 1
             optimizer.zero_grad(set_to_none=True)
         checkpoint = output_dir / f"epoch-{epoch}" / "unet"
         model.save_model(checkpoint)
-        print(f"Epoch {epoch}: mean loss {total_loss / batches:.4f}; saved {checkpoint}")
+        print(f"Epoch {epoch}: mean loss {total_loss / batches:.4f}; "
+              f"optimizer steps {optimizer_steps}, skipped {skipped_steps}; saved {checkpoint}")
+        if evaluate_during_training and last_evaluation_step != global_step:
+            evaluate_baseline(model, evaluation_examples, output_dir, config,
+                              epoch, global_step, precision)
+            last_evaluation_step = global_step
 
     final_checkpoint = output_dir / "final" / "unet"
     model.save_model(final_checkpoint)

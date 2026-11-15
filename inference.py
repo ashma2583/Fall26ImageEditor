@@ -54,7 +54,7 @@ def prepare_conditioning(model, source, instruction):
     pixels = pixels.permute(2, 0, 1).unsqueeze(0).to(device=device, dtype=vae_dtype)
     pixels = pixels / 127.5 - 1.0
     source_latents = model.vae.encode(pixels).latent_dist.mode()
-    source_latents = (source_latents * model.vae.config.scaling_factor).to(dtype)
+    source_latents = source_latents.to(dtype)
     image_conditions = torch.cat(
         [source_latents, source_latents, torch.zeros_like(source_latents)], dim=0
     )
@@ -122,7 +122,7 @@ def checkpoint_from_config(config):
 
 def random_debug_examples(config, seed):
     dataset = load_dataset(
-        config["dataset"].get("name", "osunlp/MagicBrush"),
+        config.get("evaluation", {}).get("name", "osunlp/MagicBrush"),
         data_files={"train": "data/train-*", "test": "data/test-*"},
         streaming=True,
         token=os.getenv("HF_TOKEN"),
