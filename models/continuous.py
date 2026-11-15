@@ -12,7 +12,7 @@ class ContinuousInstructPix2PixModel(nn.Module):
     """
 
     def __init__(self, model_id, device, previous_drop_rate, original_drop_rate,
-                 instruction_drop_rate, previous_degrade_rate=0.0):
+                 instruction_drop_rate, previous_degrade_rate=0.0, model_path=None):
         super().__init__()
         self.device = torch.device(device)
         self.previous_drop_rate = previous_drop_rate
@@ -25,7 +25,10 @@ class ContinuousInstructPix2PixModel(nn.Module):
         self.tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
         self.text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder").to(device)
         self.vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae").to(device)
-        self.unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to(device)
+        if model_path is None:
+            self.unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to(device)
+        else:
+            self.unet = UNet2DConditionModel.from_pretrained(model_path).to(device)
         self.noise_scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
         self._expand_conv_in()
 
