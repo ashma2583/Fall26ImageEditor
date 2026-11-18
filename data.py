@@ -206,8 +206,6 @@ def load_ultraedit(
         dataset = dataset.cast_column("source_image", Image(decode=False))
         dataset = dataset.cast_column("edited_image", Image(decode=False))
         dataset = filter_edit_category(dataset, edit_category)
-        dataset = dataset.cast_column("source_image", Image())
-        dataset = dataset.cast_column("edited_image", Image())
 
     transform = transforms.Compose(
         [
@@ -216,11 +214,17 @@ def load_ultraedit(
             transforms.Normalize([0.5] * 3, [0.5] * 3),
         ]
     )
+    image_decoder = Image()
+
+    def to_tensor(value):
+        if isinstance(value, dict):
+            value = image_decoder.decode_example(value)
+        return transform(value.convert("RGB"))
 
     def preprocess(batch):
         return {
-            "source": [transform(img.convert("RGB")) for img in batch["source_image"]],
-            "target": [transform(img.convert("RGB")) for img in batch["edited_image"]],
+            "source": [to_tensor(img) for img in batch["source_image"]],
+            "target": [to_tensor(img) for img in batch["edited_image"]],
             "instruction": batch["edit_prompt"],
             "category": [categorize_instruction(prompt) for prompt in batch["edit_prompt"]],
         }
