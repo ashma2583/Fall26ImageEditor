@@ -2,7 +2,7 @@ import os
 import re
 from itertools import islice
 import torch
-from datasets import load_dataset
+from datasets import Image, load_dataset
 from torchvision import transforms
 
 
@@ -186,6 +186,7 @@ def load_ultraedit(
     streaming=True,
     name="BleachNick/UltraEdit_500k",
     split="FreeForm",
+    edit_category=None,
 ):
     """Load UltraEdit and expose rows in the format expected by the trainer.
 
@@ -199,6 +200,14 @@ def load_ultraedit(
         streaming=streaming,
         token=os.getenv("HF_TOKEN"),
     )
+    if edit_category is not None:
+        # Rejected rows do not need PIL decoding or resizing. The public release
+        # has no category labels, so these labels are inferred from edit_prompt.
+        dataset = dataset.cast_column("source_image", Image(decode=False))
+        dataset = dataset.cast_column("edited_image", Image(decode=False))
+        dataset = filter_edit_category(dataset, edit_category)
+        dataset = dataset.cast_column("source_image", Image())
+        dataset = dataset.cast_column("edited_image", Image())
 
     transform = transforms.Compose(
         [

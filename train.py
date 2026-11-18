@@ -3,7 +3,9 @@
 import argparse
 import random
 from contextlib import nullcontext
+from itertools import islice
 from pathlib import Path
+from time import perf_counter
 
 import torch
 import yaml
@@ -12,7 +14,7 @@ from tqdm.auto import tqdm
 
 from models.baseline import InstructPix2PixModel
 from models.continuous import ContinuousInstructPix2PixModel
-from data import load_instructpix2pix, load_magicbrush, load_magicbrush_validation
+from data import load_instructpix2pix, load_magicbrush, load_magicbrush_validation, load_ultraedit
 from evaluation import evaluate_baseline
 
 
@@ -155,6 +157,14 @@ def train(config, resume_from=None, epochs_override=None):
             resolution=int(data_settings["resolution"]),
             streaming=bool(data_settings.get("streaming", True)),
         )
+    elif dataset_type == "ultraedit" and not continuous:
+        train_dataset = load_ultraedit(
+            name=data_settings.get("name", "BleachNick/UltraEdit_500k"),
+            split=data_settings.get("split", "FreeForm"),
+            resolution=int(data_settings["resolution"]),
+            streaming=bool(data_settings.get("streaming", True)),
+            edit_category=data_settings.get("edit_category"),
+        )
     else:
         raise ValueError(f"Unsupported dataset.type {dataset_type!r} for model.type {model_type!r}")
     if data_settings.get("streaming", False):
@@ -168,13 +178,34 @@ def train(config, resume_from=None, epochs_override=None):
         max_samples = int(max_samples)
         if max_samples < 1:
             raise ValueError("dataset.max_train_samples must be positive")
+    evaluation_settings = config.get("evaluation", {})
+    evaluate_during_training = not continuous and bool(evaluation_settings.get("enabled", False))
+    evaluation_source = evaluation_settings.get("source", "magicbrush_dev")
+    holdout_rows = None
+    if evaluate_during_training and evaluation_source == "heldout":
+        holdout_count = int(evaluation_settings.get("num_examples", 24))
+        if holdout_count < 1:
+            raise ValueError("evaluation.num_examples must be positive")
+        if not data_settings.get("streaming", False) or not data_settings.get("materialize", False) or max_samples is None:
+            raise ValueError("evaluation.source=heldout requires streaming, materialize, and max_train_samples")
+        materialize_start = perf_counter()
+        selected = list(islice(train_dataset, max_samples + holdout_count))
+        if len(selected) < max_samples + holdout_count:
+            raise RuntimeError("Too few filtered examples for the requested train and held-out sets")
+        train_dataset = selected[:max_samples]
+        holdout_rows = selected[max_samples:]
+        print(f"Materialized {len(train_dataset)} training and {len(holdout_rows)} held-out "
+              f"examples in {perf_counter() - materialize_start:.1f}s", flush=True)
+    elif max_samples is not None:
         train_dataset = (train_dataset.take(max_samples) if data_settings.get("streaming", False)
                          else train_dataset.select(range(min(max_samples, len(train_dataset)))))
-    if data_settings.get("materialize", False):
+    if data_settings.get("materialize", False) and holdout_rows is None:
+        materialize_start = perf_counter()
         train_dataset = list(train_dataset)
         if not train_dataset:
             raise RuntimeError("The selected training subset is empty")
-        print(f"Materialized {len(train_dataset)} fixed training examples", flush=True)
+        print(f"Materialized {len(train_dataset)} fixed training examples in "
+              f"{perf_counter() - materialize_start:.1f}s", flush=True)
     loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_batch)
 
     model = build_model(model_type, model_settings, settings, device, resume_checkpoint)
@@ -204,23 +235,21 @@ def train(config, resume_from=None, epochs_override=None):
     save_every_epochs = int(settings.get("save_every_epochs", 1))
     if save_every_epochs < 0:
         raise ValueError("training.save_every_epochs must be nonnegative")
-    evaluation_settings = config.get("evaluation", {})
-    evaluate_during_training = not continuous and bool(evaluation_settings.get("enabled", False))
     evaluation_every_steps = int(evaluation_settings.get("every_steps", 2000))
     if evaluate_during_training and evaluation_every_steps < 1:
         raise ValueError("evaluation.every_steps must be positive")
-    evaluation_source = evaluation_settings.get("source", "magicbrush_dev")
-    if evaluate_during_training and evaluation_source == "train_subset":
-        if not isinstance(train_dataset, list):
+    if evaluate_during_training and evaluation_source in ("train_subset", "heldout"):
+        selected_rows = train_dataset if evaluation_source == "train_subset" else holdout_rows
+        if not isinstance(selected_rows, list):
             raise ValueError("evaluation.source=train_subset requires dataset.materialize: true")
         evaluation_examples = [
             {
                 "source": torch.as_tensor(row["source"]),
                 "target": torch.as_tensor(row["target"]),
                 "instruction": row["instruction"],
-                "img_id": f"train-{index}",
+                "img_id": f"{evaluation_source}-{index}",
             }
-            for index, row in enumerate(train_dataset[:int(evaluation_settings.get("num_examples", 24))])
+            for index, row in enumerate(selected_rows[:int(evaluation_settings.get("num_examples", 24))])
         ]
     elif evaluate_during_training and evaluation_source == "magicbrush_dev":
         evaluation_examples = load_magicbrush_validation(
@@ -240,6 +269,9 @@ def train(config, resume_from=None, epochs_override=None):
                           start_epoch, global_step, precision)
         last_evaluation_step = global_step
     for epoch in range(start_epoch + 1, final_epoch + 1):
+        epoch_start = perf_counter()
+        if device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device)
         if hasattr(train_dataset, "set_epoch"):
             train_dataset.set_epoch(epoch - 1)
         pending = 0
@@ -248,6 +280,7 @@ def train(config, resume_from=None, epochs_override=None):
         optimizer_steps = 0
         skipped_steps = 0
         reached_max_steps = False
+        evaluation_seconds = 0.0
         for batch in tqdm(loader, desc=f"Epoch {epoch}/{final_epoch}"):
             source = batch["source"].to(device)
             target = batch["target"].to(device)
@@ -278,8 +311,10 @@ def train(config, resume_from=None, epochs_override=None):
                 pending = 0
                 if evaluate_during_training and global_step and global_step % evaluation_every_steps == 0 \
                         and last_evaluation_step != global_step:
+                    evaluation_start = perf_counter()
                     evaluate_baseline(model, evaluation_examples, output_dir, config,
                                       epoch, global_step, precision)
+                    evaluation_seconds += perf_counter() - evaluation_start
                     last_evaluation_step = global_step
                 if max_train_steps is not None and global_step >= max_train_steps:
                     reached_max_steps = True
@@ -303,8 +338,14 @@ def train(config, resume_from=None, epochs_override=None):
                 optimizer_steps += 1
                 global_step += 1
             optimizer.zero_grad(set_to_none=True)
+        epoch_seconds = perf_counter() - epoch_start
+        train_seconds = max(epoch_seconds - evaluation_seconds, 1e-9)
         summary = (f"Epoch {epoch}: mean loss {total_loss / batches:.4f}; "
-                   f"optimizer steps {optimizer_steps}, skipped {skipped_steps}")
+                   f"optimizer steps {optimizer_steps}, skipped {skipped_steps}; "
+                   f"train {train_seconds:.1f}s, evaluation {evaluation_seconds:.1f}s, "
+                   f"steps/s {optimizer_steps / train_seconds:.3f}")
+        if device.type == "cuda":
+            summary += f"; peak CUDA allocated {torch.cuda.max_memory_allocated(device) / 2**30:.1f} GiB"
         if save_every_epochs and epoch % save_every_epochs == 0:
             checkpoint = output_dir / f"epoch-{epoch}" / "unet"
             model.save_model(checkpoint)
