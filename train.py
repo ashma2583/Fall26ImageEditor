@@ -170,6 +170,11 @@ def train(config, resume_from=None, epochs_override=None):
             raise ValueError("dataset.max_train_samples must be positive")
         train_dataset = (train_dataset.take(max_samples) if data_settings.get("streaming", False)
                          else train_dataset.select(range(min(max_samples, len(train_dataset)))))
+    if data_settings.get("materialize", False):
+        train_dataset = list(train_dataset)
+        if not train_dataset:
+            raise RuntimeError("The selected training subset is empty")
+        print(f"Materialized {len(train_dataset)} fixed training examples", flush=True)
     loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_batch)
 
     model = build_model(model_type, model_settings, settings, device, resume_checkpoint)
@@ -191,19 +196,43 @@ def train(config, resume_from=None, epochs_override=None):
     optimizer.zero_grad(set_to_none=True)
     final_epoch = start_epoch + epochs
     max_grad_norm = float(settings.get("max_grad_norm", 1.0))
+    max_train_steps = settings.get("max_train_steps")
+    if max_train_steps is not None:
+        max_train_steps = int(max_train_steps)
+        if max_train_steps < 1:
+            raise ValueError("training.max_train_steps must be positive")
+    save_every_epochs = int(settings.get("save_every_epochs", 1))
+    if save_every_epochs < 0:
+        raise ValueError("training.save_every_epochs must be nonnegative")
     evaluation_settings = config.get("evaluation", {})
     evaluate_during_training = not continuous and bool(evaluation_settings.get("enabled", False))
     evaluation_every_steps = int(evaluation_settings.get("every_steps", 2000))
     if evaluate_during_training and evaluation_every_steps < 1:
         raise ValueError("evaluation.every_steps must be positive")
-    evaluation_examples = (
-        load_magicbrush_validation(
+    evaluation_source = evaluation_settings.get("source", "magicbrush_dev")
+    if evaluate_during_training and evaluation_source == "train_subset":
+        if not isinstance(train_dataset, list):
+            raise ValueError("evaluation.source=train_subset requires dataset.materialize: true")
+        evaluation_examples = [
+            {
+                "source": torch.as_tensor(row["source"]),
+                "target": torch.as_tensor(row["target"]),
+                "instruction": row["instruction"],
+                "img_id": f"train-{index}",
+            }
+            for index, row in enumerate(train_dataset[:int(evaluation_settings.get("num_examples", 24))])
+        ]
+    elif evaluate_during_training and evaluation_source == "magicbrush_dev":
+        evaluation_examples = load_magicbrush_validation(
             resolution=int(data_settings["resolution"]),
             count=int(evaluation_settings.get("num_examples", 24)),
             seed=int(settings["seed"]),
             name=evaluation_settings.get("name", "osunlp/MagicBrush"),
-        ) if evaluate_during_training else None
-    )
+        )
+    elif evaluate_during_training:
+        raise ValueError(f"Unsupported evaluation.source {evaluation_source!r}")
+    else:
+        evaluation_examples = None
     global_step = 0
     last_evaluation_step = None
     if evaluate_during_training:
@@ -218,6 +247,7 @@ def train(config, resume_from=None, epochs_override=None):
         batches = 0
         optimizer_steps = 0
         skipped_steps = 0
+        reached_max_steps = False
         for batch in tqdm(loader, desc=f"Epoch {epoch}/{final_epoch}"):
             source = batch["source"].to(device)
             target = batch["target"].to(device)
@@ -251,6 +281,9 @@ def train(config, resume_from=None, epochs_override=None):
                     evaluate_baseline(model, evaluation_examples, output_dir, config,
                                       epoch, global_step, precision)
                     last_evaluation_step = global_step
+                if max_train_steps is not None and global_step >= max_train_steps:
+                    reached_max_steps = True
+                    break
 
         if batches == 0:
             raise RuntimeError("The training dataset yielded no batches.")
@@ -270,14 +303,20 @@ def train(config, resume_from=None, epochs_override=None):
                 optimizer_steps += 1
                 global_step += 1
             optimizer.zero_grad(set_to_none=True)
-        checkpoint = output_dir / f"epoch-{epoch}" / "unet"
-        model.save_model(checkpoint)
-        print(f"Epoch {epoch}: mean loss {total_loss / batches:.4f}; "
-              f"optimizer steps {optimizer_steps}, skipped {skipped_steps}; saved {checkpoint}")
-        if evaluate_during_training and last_evaluation_step != global_step:
+        summary = (f"Epoch {epoch}: mean loss {total_loss / batches:.4f}; "
+                   f"optimizer steps {optimizer_steps}, skipped {skipped_steps}")
+        if save_every_epochs and epoch % save_every_epochs == 0:
+            checkpoint = output_dir / f"epoch-{epoch}" / "unet"
+            model.save_model(checkpoint)
+            summary += f"; saved {checkpoint}"
+        print(summary, flush=True)
+        if evaluate_during_training and last_evaluation_step != global_step and \
+                (evaluation_settings.get("at_epoch_end", True) or reached_max_steps):
             evaluate_baseline(model, evaluation_examples, output_dir, config,
                               epoch, global_step, precision)
             last_evaluation_step = global_step
+        if reached_max_steps:
+            break
 
     final_checkpoint = output_dir / "final" / "unet"
     model.save_model(final_checkpoint)

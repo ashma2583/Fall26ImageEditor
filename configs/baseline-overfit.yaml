@@ -1,0 +1,45 @@
+# Diagnostic: memorize 32 fixed edit pairs before testing generalization.
+experiment:
+  name: ip2p_sd_overfit32
+  output_dir: checkpoints/ip2p_sd_overfit32
+
+model:
+  type: baseline
+  pretrained: stable-diffusion-v1-5/stable-diffusion-v1-5
+  device: cuda
+
+dataset:
+  type: instructpix2pix
+  name: timbrooks/instructpix2pix-clip-filtered
+  resolution: 256
+  streaming: true
+  max_train_samples: 32
+  shuffle_buffer_size: 1000
+  materialize: true
+
+evaluation:
+  enabled: true
+  source: train_subset
+  num_examples: 8
+  num_images: 3
+  num_inference_steps: 30
+  every_steps: 250
+  at_epoch_end: false
+
+training:
+  batch_size: 4
+  gradient_accumulation_steps: 2
+  epochs: 600
+  max_train_steps: 2000
+  save_every_epochs: 125
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  seed: 42
+  mixed_precision: fp16
+  conditioning_dropout_prob: 0.0
+  max_grad_norm: 1.0
+
+inference:
+  num_inference_steps: 30
+  source_guidance_scale: 1.0
+  instruction_guidance_scale: 1.0
