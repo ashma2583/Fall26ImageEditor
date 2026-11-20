@@ -12,9 +12,14 @@ set -e
 
 cd "$SLURM_SUBMIT_DIR"
 
-if [ -n "${HF_HOME:-}" ]; then
-    mkdir -p "$HF_HOME"
-fi
+# The mds_team scratch directory is the only storage target for large project
+# artifacts. Leave the small Slurm and GPU logs under the submitted repo.
+project_scratch="/scratch/mds_team_root/mds_team/$USER/Fall26ImageEditor"
+export MDST_OUTPUT_ROOT="$project_scratch"
+export HF_HOME="$project_scratch/hf"
+export HF_HUB_CACHE="$HF_HOME/hub"
+export HF_DATASETS_CACHE="$HF_HOME/datasets"
+mkdir -p "$HF_HOME" "$MDST_OUTPUT_ROOT/checkpoints"
 mkdir -p outputs
 
 module load python

@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw
 from tqdm.auto import tqdm
 
 from models.baseline import InstructPix2PixModel
+from paths import experiment_output_dir, has_saved_unet
 
 
 ROOT = Path(__file__).resolve().parent
@@ -101,11 +102,9 @@ def sample_image(model, conditioning, steps, instruction_scale, source_scale, se
 
 
 def checkpoint_from_config(config):
-    output_dir = Path(config["experiment"]["output_dir"])
-    if not output_dir.is_absolute():
-        output_dir = ROOT / output_dir
+    output_dir = experiment_output_dir(config, ROOT)
     final = output_dir / "final" / "unet"
-    if final.is_dir():
+    if has_saved_unet(final):
         return final
     epochs = []
     for path in output_dir.glob("epoch-*/unet"):
@@ -113,7 +112,7 @@ def checkpoint_from_config(config):
             epoch = int(path.parent.name.removeprefix("epoch-"))
         except ValueError:
             continue
-        if path.is_dir():
+        if has_saved_unet(path):
             epochs.append((epoch, path))
     if epochs:
         return max(epochs)[1]

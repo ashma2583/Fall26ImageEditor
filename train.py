@@ -16,6 +16,7 @@ from models.baseline import InstructPix2PixModel
 from models.continuous import ContinuousInstructPix2PixModel
 from data import load_instructpix2pix, load_magicbrush, load_magicbrush_validation, load_ultraedit
 from evaluation import evaluate_baseline
+from paths import experiment_output_dir, has_saved_unet
 
 
 ROOT = Path(__file__).resolve().parent
@@ -36,7 +37,7 @@ def resolve_resume_checkpoint(resume_from, output_dir):
                 epoch = int(path.parent.name.removeprefix("epoch-"))
             except ValueError:
                 continue
-            if (path / "config.json").is_file():
+            if has_saved_unet(path):
                 candidates.append((epoch, path))
         if not candidates:
             raise FileNotFoundError(f"No epoch-N/unet checkpoint found in {output_dir}")
@@ -47,7 +48,7 @@ def resolve_resume_checkpoint(resume_from, output_dir):
         path = ROOT / path
     if path.name != "unet" and (path / "unet").is_dir():
         path = path / "unet"
-    if not (path / "config.json").is_file():
+    if not has_saved_unet(path):
         raise FileNotFoundError(f"No UNet checkpoint found at {path}")
 
     epoch_name = path.parent.name
@@ -112,11 +113,10 @@ def train(config, resume_from=None, epochs_override=None):
     if model_type not in MODEL_TYPES:
         raise ValueError(f"model.type must be one of {MODEL_TYPES}, got {model_type!r}")
     continuous = model_type == "continuous"
-    output_dir = Path(config["experiment"]["output_dir"])
-    if not output_dir.is_absolute():
-        output_dir = ROOT / output_dir
+    output_dir = experiment_output_dir(config, ROOT)
     start_epoch, resume_checkpoint = resolve_resume_checkpoint(resume_from, output_dir)
     seed = int(settings["seed"]) + start_epoch
+    data_seed = int(settings["seed"])
     random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
@@ -169,10 +169,10 @@ def train(config, resume_from=None, epochs_override=None):
         raise ValueError(f"Unsupported dataset.type {dataset_type!r} for model.type {model_type!r}")
     if data_settings.get("streaming", False):
         train_dataset = train_dataset.shuffle(
-            buffer_size=int(data_settings.get("shuffle_buffer_size", 1000)), seed=seed
+            buffer_size=int(data_settings.get("shuffle_buffer_size", 1000)), seed=data_seed
         )
     else:
-        train_dataset = train_dataset.shuffle(seed=seed)
+        train_dataset = train_dataset.shuffle(seed=data_seed)
     max_samples = data_settings.get("max_train_samples")
     if max_samples is not None:
         max_samples = int(max_samples)
