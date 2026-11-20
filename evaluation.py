@@ -1,4 +1,4 @@
-"""Fixed MagicBrush dev-set checks for the baseline training job."""
+"""Fixed image and denoising-loss checks for baseline training jobs."""
 
 import csv
 from contextlib import nullcontext
@@ -16,8 +16,14 @@ def _to_image(tensor):
     return Image.fromarray(pixels.permute(1, 2, 0).round().byte().numpy())
 
 
-def evaluate_baseline(model, examples, output_dir, config, epoch, step, precision):
+def evaluate_baseline(model, examples, output_dir, config, epoch, step, precision, split=None):
     """Log repeatable denoising loss and a source/target/generated comparison."""
+    if isinstance(examples, dict):
+        return {
+            name: evaluate_baseline(model, rows, output_dir, config, epoch, step, precision, split=name)
+            for name, rows in examples.items()
+        }
+
     device = next(model.unet.parameters()).device
     eval_settings = config["evaluation"]
     resolution = int(config["dataset"]["resolution"])
@@ -82,16 +88,24 @@ def evaluate_baseline(model, examples, output_dir, config, epoch, step, precisio
                 for line_index, line in enumerate(instruction_lines[:3]):
                     draw.text((8, y + resolution + 5 + line_index * 18), line, fill="black")
 
-            image_path = eval_dir / f"epoch-{epoch:02d}-step-{step:06d}.png"
+            image_name = f"epoch-{epoch:02d}-step-{step:06d}.png"
+            if split is not None:
+                image_name = f"{split}-{image_name}"
+            image_path = eval_dir / image_name
             canvas.save(image_path)
-            metrics_path = eval_dir / "metrics.csv"
+            metrics_path = eval_dir / ("metrics-by-split.csv" if split is not None else "metrics.csv")
             needs_header = not metrics_path.exists()
             with metrics_path.open("a", newline="", encoding="utf-8") as handle:
                 writer = csv.writer(handle)
                 if needs_header:
-                    writer.writerow(("epoch", "optimizer_step", "validation_mse", "examples", "image"))
-                writer.writerow((epoch, step, f"{validation_loss:.6f}", total_examples, image_path.name))
-            print(f"Evaluation epoch {epoch} step {step}: validation MSE {validation_loss:.5f}; "
+                    if split is None:
+                        writer.writerow(("epoch", "optimizer_step", "validation_mse", "examples", "image"))
+                    else:
+                        writer.writerow(("split", "epoch", "optimizer_step", "denoising_mse", "examples", "image"))
+                values = (epoch, step, f"{validation_loss:.6f}", total_examples, image_path.name)
+                writer.writerow((split, *values) if split is not None else values)
+            label = f" {split}" if split is not None else ""
+            print(f"Evaluation{label} epoch {epoch} step {step}: MSE {validation_loss:.5f}; "
                   f"images {image_path}", flush=True)
             return validation_loss
     finally:

@@ -182,12 +182,17 @@ def train(config, resume_from=None, epochs_override=None):
     evaluate_during_training = not continuous and bool(evaluation_settings.get("enabled", False))
     evaluation_source = evaluation_settings.get("source", "magicbrush_dev")
     holdout_rows = None
-    if evaluate_during_training and evaluation_source == "heldout":
-        holdout_count = int(evaluation_settings.get("num_examples", 24))
+    if evaluate_during_training and evaluation_source in ("heldout", "train_and_heldout"):
+        holdout_count = int(evaluation_settings.get(
+            "num_holdout_examples" if evaluation_source == "train_and_heldout" else "num_examples", 24
+        ))
         if holdout_count < 1:
-            raise ValueError("evaluation.num_examples must be positive")
+            count_setting = ("evaluation.num_holdout_examples" if evaluation_source == "train_and_heldout"
+                             else "evaluation.num_examples")
+            raise ValueError(f"{count_setting} must be positive")
         if not data_settings.get("streaming", False) or not data_settings.get("materialize", False) or max_samples is None:
-            raise ValueError("evaluation.source=heldout requires streaming, materialize, and max_train_samples")
+            raise ValueError(f"evaluation.source={evaluation_source} requires streaming, "
+                             "materialize, and max_train_samples")
         materialize_start = perf_counter()
         selected = list(islice(train_dataset, max_samples + holdout_count))
         if len(selected) < max_samples + holdout_count:
@@ -238,7 +243,27 @@ def train(config, resume_from=None, epochs_override=None):
     evaluation_every_steps = int(evaluation_settings.get("every_steps", 2000))
     if evaluate_during_training and evaluation_every_steps < 1:
         raise ValueError("evaluation.every_steps must be positive")
-    if evaluate_during_training and evaluation_source in ("train_subset", "heldout"):
+    if evaluate_during_training and evaluation_source == "train_and_heldout":
+        train_count = int(evaluation_settings.get("num_train_examples", 10))
+        if train_count < 1 or train_count > len(train_dataset):
+            raise ValueError("evaluation.num_train_examples must fit in the training subset")
+        evaluation_examples = {
+            "train": [
+                {"source": torch.as_tensor(row["source"]),
+                 "target": torch.as_tensor(row["target"]),
+                 "instruction": row["instruction"],
+                 "img_id": f"train-{index}"}
+                for index, row in enumerate(train_dataset[:train_count])
+            ],
+            "heldout": [
+                {"source": torch.as_tensor(row["source"]),
+                 "target": torch.as_tensor(row["target"]),
+                 "instruction": row["instruction"],
+                 "img_id": f"heldout-{index}"}
+                for index, row in enumerate(holdout_rows)
+            ],
+        }
+    elif evaluate_during_training and evaluation_source in ("train_subset", "heldout"):
         selected_rows = train_dataset if evaluation_source == "train_subset" else holdout_rows
         if not isinstance(selected_rows, list):
             raise ValueError("evaluation.source=train_subset requires dataset.materialize: true")

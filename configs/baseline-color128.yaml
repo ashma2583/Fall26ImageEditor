@@ -1,5 +1,5 @@
 # Focused sign-of-life run: keyword-inferred color edits from UltraEdit_500k.
-# The first 2,000 matching examples train the model; the next 16 are held out.
+# The first 2,000 matching examples train the model; the next 10 are held out.
 experiment:
   name: ip2p_sd_color128
   output_dir: checkpoints/ip2p_sd_color128
@@ -22,9 +22,10 @@ dataset:
 
 evaluation:
   enabled: true
-  source: heldout
-  num_examples: 16
-  num_images: 3
+  source: train_and_heldout
+  num_train_examples: 10
+  num_holdout_examples: 10
+  num_images: 10
   num_inference_steps: 30
   every_steps: 250
   at_epoch_end: false
