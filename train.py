@@ -183,6 +183,7 @@ def train(config, resume_from=None, epochs_override=None):
     evaluate_during_training = not continuous and bool(evaluation_settings.get("enabled", False))
     evaluation_source = evaluation_settings.get("source", "magicbrush_dev")
     holdout_rows = None
+    fixed_stream_partition = False
     if evaluate_during_training and evaluation_source in ("heldout", "train_and_heldout"):
         holdout_count = int(evaluation_settings.get(
             "num_holdout_examples" if evaluation_source == "train_and_heldout" else "num_examples", 24
@@ -191,17 +192,30 @@ def train(config, resume_from=None, epochs_override=None):
             count_setting = ("evaluation.num_holdout_examples" if evaluation_source == "train_and_heldout"
                              else "evaluation.num_examples")
             raise ValueError(f"{count_setting} must be positive")
-        if not data_settings.get("streaming", False) or not data_settings.get("materialize", False) or max_samples is None:
-            raise ValueError(f"evaluation.source={evaluation_source} requires streaming, "
-                             "materialize, and max_train_samples")
-        materialize_start = perf_counter()
-        selected = list(islice(train_dataset, max_samples + holdout_count))
-        if len(selected) < max_samples + holdout_count:
-            raise RuntimeError("Too few filtered examples for the requested train and held-out sets")
-        train_dataset = selected[:max_samples]
-        holdout_rows = selected[max_samples:]
-        print(f"Materialized {len(train_dataset)} training and {len(holdout_rows)} held-out "
-              f"examples in {perf_counter() - materialize_start:.1f}s", flush=True)
+        if not data_settings.get("streaming", False) or max_samples is None:
+            raise ValueError(f"evaluation.source={evaluation_source} requires streaming "
+                             "and max_train_samples")
+        if data_settings.get("materialize", False):
+            materialize_start = perf_counter()
+            selected = list(islice(train_dataset, max_samples + holdout_count))
+            if len(selected) < max_samples + holdout_count:
+                raise RuntimeError("Too few filtered examples for the requested train and held-out sets")
+            train_dataset = selected[:max_samples]
+            holdout_rows = selected[max_samples:]
+            print(f"Materialized {len(train_dataset)} training and {len(holdout_rows)} held-out "
+                  f"examples in {perf_counter() - materialize_start:.1f}s", flush=True)
+        elif evaluation_source == "train_and_heldout":
+            # Split a fixed shuffled stream before taking the training subset.
+            # Keep the shuffle epoch fixed, or held-out examples could enter training.
+            holdout_rows = list(islice(train_dataset, holdout_count))
+            if len(holdout_rows) != holdout_count:
+                raise RuntimeError("Too few filtered examples for the held-out set")
+            train_dataset = train_dataset.skip(holdout_count).take(max_samples)
+            fixed_stream_partition = True
+            print(f"Reserved {holdout_count} held-out examples; streaming up to "
+                  f"{max_samples} training examples per epoch", flush=True)
+        else:
+            raise ValueError("evaluation.source=heldout requires dataset.materialize: true")
     elif max_samples is not None:
         train_dataset = (train_dataset.take(max_samples) if data_settings.get("streaming", False)
                          else train_dataset.select(range(min(max_samples, len(train_dataset)))))
@@ -241,20 +255,26 @@ def train(config, resume_from=None, epochs_override=None):
     save_every_epochs = int(settings.get("save_every_epochs", 1))
     if save_every_epochs < 0:
         raise ValueError("training.save_every_epochs must be nonnegative")
-    evaluation_every_steps = int(evaluation_settings.get("every_steps", 2000))
-    if evaluate_during_training and evaluation_every_steps < 1:
+    evaluation_every_steps = evaluation_settings.get("every_steps")
+    if evaluation_every_steps is not None:
+        evaluation_every_steps = int(evaluation_every_steps)
+    if evaluate_during_training and evaluation_every_steps is not None and evaluation_every_steps < 1:
         raise ValueError("evaluation.every_steps must be positive")
     if evaluate_during_training and evaluation_source == "train_and_heldout":
         train_count = int(evaluation_settings.get("num_train_examples", 10))
-        if train_count < 1 or train_count > len(train_dataset):
+        if train_count < 1 or (isinstance(train_dataset, list) and train_count > len(train_dataset)):
             raise ValueError("evaluation.num_train_examples must fit in the training subset")
+        train_rows = (train_dataset[:train_count] if isinstance(train_dataset, list)
+                      else list(islice(train_dataset, train_count)))
+        if len(train_rows) != train_count:
+            raise RuntimeError("Too few filtered examples for training evaluation")
         evaluation_examples = {
             "train": [
                 {"source": torch.as_tensor(row["source"]),
                  "target": torch.as_tensor(row["target"]),
                  "instruction": row["instruction"],
                  "img_id": f"train-{index}"}
-                for index, row in enumerate(train_dataset[:train_count])
+                for index, row in enumerate(train_rows)
             ],
             "heldout": [
                 {"source": torch.as_tensor(row["source"]),
@@ -298,7 +318,7 @@ def train(config, resume_from=None, epochs_override=None):
         epoch_start = perf_counter()
         if device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
-        if hasattr(train_dataset, "set_epoch"):
+        if hasattr(train_dataset, "set_epoch") and not fixed_stream_partition:
             train_dataset.set_epoch(epoch - 1)
         pending = 0
         total_loss = 0.0
@@ -335,7 +355,8 @@ def train(config, resume_from=None, epochs_override=None):
                     global_step += 1
                 optimizer.zero_grad(set_to_none=True)
                 pending = 0
-                if evaluate_during_training and global_step and global_step % evaluation_every_steps == 0 \
+                if evaluate_during_training and evaluation_every_steps and global_step and \
+                        global_step % evaluation_every_steps == 0 \
                         and last_evaluation_step != global_step:
                     evaluation_start = perf_counter()
                     evaluate_baseline(model, evaluation_examples, output_dir, config,

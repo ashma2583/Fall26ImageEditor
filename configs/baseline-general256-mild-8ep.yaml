@@ -1,0 +1,48 @@
+# 256px general-edit run with a fixed streamed holdout and epoch-end evaluation.
+experiment:
+  name: ip2p_sd_general256_mild_8ep
+  output_dir: checkpoints/ip2p_sd_general256_mild_8ep
+
+model:
+  type: baseline
+  pretrained: stable-diffusion-v1-5/stable-diffusion-v1-5
+  device: cuda
+
+dataset:
+  type: ultraedit
+  name: BleachNick/UltraEdit_500k
+  split: FreeForm
+  resolution: 256
+  streaming: true
+  shuffle_buffer_size: 1000
+  max_train_samples: 100000
+  min_scores:
+    clip_sim_image: 0.82
+    clip_sim_dir: 0.365
+    dinov2_sim: 0.6
+
+evaluation:
+  enabled: true
+  source: train_and_heldout
+  num_train_examples: 5
+  num_holdout_examples: 5
+  num_images: 5
+  num_inference_steps: 30
+  at_epoch_end: true
+
+training:
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  epochs: 8
+  save_every_epochs: 1
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  seed: 42
+  mixed_precision: fp16
+  conditioning_dropout_prob: 0.05
+  max_grad_norm: 1.0
+
+inference:
+  num_inference_steps: 30
+  source_guidance_scale: 1.5
+  instruction_guidance_scale: 7.5
