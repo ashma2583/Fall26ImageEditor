@@ -1,0 +1,14 @@
+evaluation_grid: heldout-epoch-06-step-007500.png
+output_dir: guidance-sweep-epoch-06
+source_guidance_scales: [1.5, 3.0, 5.0]
+instruction_guidance_scales: [5.0, 7.5, 10.0]
+steps: [30, 50]
+cases:
+  - row: 0
+    instruction: change the couches to a bright teal color
+  - row: 1
+    instruction: Change the color of the building to a vibrant pink
+  - row: 2
+    instruction: Change the color of the wagon wheels to purple.
+  - row: 7
+    instruction: Change the color scheme to black and gold
