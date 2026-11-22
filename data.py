@@ -1,5 +1,6 @@
 import os
 import re
+import math
 from itertools import islice
 import torch
 from datasets import Image, load_dataset
@@ -17,6 +18,11 @@ EDIT_CATEGORIES = (
     "Turn",
     "Others",
 )
+
+ULTRAEDIT_SCORE_FIELDS = frozenset({
+    "clip_sim_image", "clip_sim_source", "clip_sim_target", "clip_sim_dir",
+    "dinov2_sim", "ssim",
+})
 
 
 def categorize_instruction(instruction):
@@ -77,6 +83,41 @@ def filter_edit_category(dataset, category):
             instruction = example.get("instruction", example.get("edit_prompt", ""))
             label = categorize_instruction(instruction)
         return label == category
+
+    return dataset.filter(matches)
+
+
+def filter_ultraedit_scores(dataset, min_scores):
+    """Apply minimum thresholds to published UltraEdit scores before image decode."""
+    if not isinstance(min_scores, dict) or not min_scores:
+        raise ValueError("dataset.min_scores must be a nonempty mapping")
+    unknown = set(min_scores) - ULTRAEDIT_SCORE_FIELDS
+    if unknown:
+        raise ValueError(f"Unsupported UltraEdit score fields: {sorted(unknown)}")
+    thresholds = {}
+    for name, value in min_scores.items():
+        if isinstance(value, bool):
+            raise ValueError(f"dataset.min_scores.{name} must be a finite number")
+        try:
+            threshold = float(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"dataset.min_scores.{name} must be a finite number") from error
+        if not math.isfinite(threshold):
+            raise ValueError(f"dataset.min_scores.{name} must be a finite number")
+        thresholds[name] = threshold
+
+    def matches(example):
+        for name, threshold in thresholds.items():
+            value = example.get(name)
+            if value is None:
+                return False
+            try:
+                score = float(value)
+            except (TypeError, ValueError):
+                return False
+            if not math.isfinite(score) or score < threshold:
+                return False
+        return True
 
     return dataset.filter(matches)
 
@@ -187,6 +228,7 @@ def load_ultraedit(
     name="BleachNick/UltraEdit_500k",
     split="FreeForm",
     edit_category=None,
+    min_scores=None,
 ):
     """Load UltraEdit and expose rows in the format expected by the trainer.
 
@@ -200,11 +242,14 @@ def load_ultraedit(
         streaming=streaming,
         token=os.getenv("HF_TOKEN"),
     )
-    if edit_category is not None:
+    if edit_category is not None or min_scores is not None:
         # Rejected rows do not need PIL decoding or resizing. The public release
         # has no category labels, so these labels are inferred from edit_prompt.
         dataset = dataset.cast_column("source_image", Image(decode=False))
         dataset = dataset.cast_column("edited_image", Image(decode=False))
+    if min_scores is not None:
+        dataset = filter_ultraedit_scores(dataset, min_scores)
+    if edit_category is not None:
         dataset = filter_edit_category(dataset, edit_category)
 
     transform = transforms.Compose(

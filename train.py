@@ -164,6 +164,7 @@ def train(config, resume_from=None, epochs_override=None):
             resolution=int(data_settings["resolution"]),
             streaming=bool(data_settings.get("streaming", True)),
             edit_category=data_settings.get("edit_category"),
+            min_scores=data_settings.get("min_scores"),
         )
     else:
         raise ValueError(f"Unsupported dataset.type {dataset_type!r} for model.type {model_type!r}")
