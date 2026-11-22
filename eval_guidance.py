@@ -29,7 +29,8 @@ def extract_case(grid, resolution, row):
 
 
 def make_grid(model, source, target, reference, instruction, row, source_scales,
-              instruction_scales, steps, seed):
+              instruction_scales, steps, seed, case_label="Held-out",
+              reference_label="Original eval"):
     resolution = source.width
     cell_height = resolution + 24
     header_height = resolution + 68
@@ -39,11 +40,11 @@ def make_grid(model, source, target, reference, instruction, row, source_scales,
     )
     draw = ImageDraw.Draw(canvas)
     for column, (title, image) in enumerate(
-        (("Source", source), ("Target", target), ("Original eval", reference))
+        (("Source", source), ("Target", target), (reference_label, reference))
     ):
         canvas.paste(image, (column * resolution, 0))
         draw.text((column * resolution + 4, resolution + 3), title, fill="black")
-    for index, line in enumerate(wrap(f"Held-out {row}: {instruction}", width=65)[:2]):
+    for index, line in enumerate(wrap(f"{case_label} {row}: {instruction}", width=65)[:2]):
         draw.text((4, resolution + 27 + index * 16), line, fill="black")
 
     conditioning = prepare_conditioning(model, source, instruction)

@@ -1,0 +1,17 @@
+evaluation_grid: epoch-04-step-022500.png
+output_dir: source-conditioning-diagnostics-final
+source_guidance_scales: [1.5, 3.0, 5.0]
+instruction_guidance_scales: [3.0, 5.0, 7.5]
+no_edit_source_scales: [1.0, 1.5, 3.0, 5.0]
+steps: [30, 50]
+cases:
+  - row: 0
+    instruction: let the dog have a newspaper in its mouth
+  - row: 2
+    instruction: switch to a robot wearing armor
+  - row: 3
+    instruction: put an Easter basket on the desk
+  - row: 6
+    instruction: Let's add a drawing of a flower to the fridge.
+  - row: 7
+    instruction: Let the woman drink wine.
