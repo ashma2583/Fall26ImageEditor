@@ -1,0 +1,10 @@
+checkpoint_epoch: 8
+reference_grid: heldout-epoch-08-step-012504.png
+output_dir: epoch8-resolution-guidance
+heldout_examples: 5
+include_text_probe: true
+resolutions: [256, 512]
+step_counts: [30, 50, 100]
+guidance_steps: 50
+instruction_guidance_scales: [5.0, 7.5, 10.0]
+source_guidance_scales: [1.0, 1.5, 2.5]
