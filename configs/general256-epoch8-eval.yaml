@@ -8,3 +8,5 @@ step_counts: [30, 50, 100]
 guidance_steps: 50
 instruction_guidance_scales: [5.0, 7.5, 10.0]
 source_guidance_scales: [1.0, 1.5, 2.5]
+reference_model: timbrooks/instruct-pix2pix
+comparison_output_dir: ip2p-comparison
